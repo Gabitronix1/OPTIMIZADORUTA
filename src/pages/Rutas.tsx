@@ -230,6 +230,7 @@ export default function Rutas() {
         distancia_total_km: opt.distanciaTotalKm,
         duracion_total_min: opt.duracionTotalMin,
         geometria: opt.geometria,
+        tramos_directos: opt.tramosDirectos,
       })
       .select("id")
       .single();

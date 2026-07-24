@@ -23,6 +23,8 @@ type ParadaDetalle = {
   } | null;
 };
 
+type TramoDirecto = { pedidoId: string; desde: [number, number]; hasta: [number, number]; tipo: string };
+
 type RutaDetalleType = {
   id: string;
   fecha: string;
@@ -34,6 +36,7 @@ type RutaDetalleType = {
   distancia_total_km: number | null;
   duracion_total_min: number | null;
   geometria: [number, number][] | null;
+  tramos_directos: TramoDirecto[] | null;
   camionetas: { patente: string; tipo: string | null; capacidad_carga: number; autonomia_km: number | null } | null;
   paradas: ParadaDetalle[];
 };
@@ -82,7 +85,7 @@ export default function RutaDetalle() {
       supabase
         .from("rutas")
         .select(
-          "id, fecha, estado, punto_inicio_lat, punto_inicio_lon, punto_inicio_direccion, hora_salida, distancia_total_km, duracion_total_min, geometria, camionetas(patente, tipo, capacidad_carga, autonomia_km), paradas(id, orden, hora_estimada, entregas(id, momento_real, cantidad_entregada), pedidos(id, cantidad, urgencia, estado, insumos(nombre, unidad_medida, codigo_pieza), equipos(id, identificador, tipo, horometro_actual), faenas(nombre)))"
+          "id, fecha, estado, punto_inicio_lat, punto_inicio_lon, punto_inicio_direccion, hora_salida, distancia_total_km, duracion_total_min, geometria, tramos_directos, camionetas(patente, tipo, capacidad_carga, autonomia_km), paradas(id, orden, hora_estimada, entregas(id, momento_real, cantidad_entregada), pedidos(id, cantidad, urgencia, estado, insumos(nombre, unidad_medida, codigo_pieza), equipos(id, identificador, tipo, horometro_actual), faenas(nombre)))"
         )
         .eq("id", id)
         .order("orden", { foreignTable: "paradas", ascending: true })
@@ -252,6 +255,17 @@ export default function RutaDetalle() {
                 pathOptions={{ color: "#2563eb", weight: 3, dashArray: "6 6" }}
               />
             )}
+            {(ruta.tramos_directos ?? []).map((t, i) => (
+              <Polyline
+                key={i}
+                positions={[t.desde, t.hasta]}
+                pathOptions={{
+                  color: t.tipo === "sin_camino_350m" ? "#dc2626" : "#d97706",
+                  weight: 3,
+                  dashArray: "2 8",
+                }}
+              />
+            ))}
             {tieneInicio && (
               <Marker position={[ruta.punto_inicio_lat as number, ruta.punto_inicio_lon as number]} icon={ICONO_INICIO}>
                 <Popup>
@@ -286,6 +300,15 @@ export default function RutaDetalle() {
       ) : (
         <p className="mt-4 text-sm text-neutral-500">
           Ninguna parada tiene una ubicación GPS reciente todavía, así que no hay mapa que mostrar.
+        </p>
+      )}
+
+      {ruta.tramos_directos && ruta.tramos_directos.length > 0 && (
+        <p className="mt-2 text-xs text-neutral-500">
+          Línea sólida azul: ruta real por camino. Línea punteada{" "}
+          <span className="text-amber-600">naranja</span> o <span className="text-red-600">roja</span>: tramo
+          estimado en línea recta porque no hay un camino mapeado hasta ese punto exacto (típico en caminos
+          internos de fundos).
         </p>
       )}
 
