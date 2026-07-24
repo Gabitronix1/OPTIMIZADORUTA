@@ -9,6 +9,7 @@ import Produccion from "./pages/Produccion";
 import Stock from "./pages/Stock";
 import Flota from "./pages/Flota";
 import Equipos from "./pages/Equipos";
+import Mapa from "./pages/Mapa";
 import Placeholder from "./pages/Placeholder";
 import { useAuth } from "./lib/useAuth";
 
@@ -33,6 +34,7 @@ export default function App() {
         >
           <Route index element={<Home />} />
           <Route path="ubicaciones" element={<Ubicaciones />} />
+          <Route path="mapa" element={<Mapa />} />
           <Route path="produccion" element={<Produccion />} />
           <Route path="mantenimiento" element={<Mantenimiento />} />
           <Route path="flota" element={<Flota />} />
