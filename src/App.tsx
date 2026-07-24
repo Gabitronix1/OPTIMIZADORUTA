@@ -8,6 +8,7 @@ import Mantenimiento from "./pages/Mantenimiento";
 import Produccion from "./pages/Produccion";
 import Stock from "./pages/Stock";
 import Flota from "./pages/Flota";
+import Equipos from "./pages/Equipos";
 import Placeholder from "./pages/Placeholder";
 import { useAuth } from "./lib/useAuth";
 
@@ -35,7 +36,7 @@ export default function App() {
           <Route path="produccion" element={<Produccion />} />
           <Route path="mantenimiento" element={<Mantenimiento />} />
           <Route path="flota" element={<Flota />} />
-          <Route path="equipos" element={<Placeholder titulo="Equipos" />} />
+          <Route path="equipos" element={<Equipos />} />
           <Route path="pedidos" element={<Placeholder titulo="Pedidos" />} />
           <Route path="bodega" element={<Stock />} />
         </Route>
