@@ -5,6 +5,20 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { supabase } from "../lib/supabaseClient";
 
+/** supabase-js no expone el cuerpo JSON de un error de Edge Function; hay que leerlo del Response crudo. */
+async function mensajeErrorFuncion(error: unknown): Promise<string> {
+  const contexto = (error as { context?: Response } | null)?.context;
+  if (contexto instanceof Response) {
+    try {
+      const cuerpo = await contexto.clone().json();
+      if (typeof cuerpo?.error === "string") return cuerpo.error;
+    } catch {
+      // el cuerpo no era JSON, seguimos al mensaje genérico
+    }
+  }
+  return error instanceof Error ? error.message : "Error desconocido";
+}
+
 type Camioneta = { id: string; patente: string; tipo: string | null; capacidad_carga: number; autonomia_km: number | null };
 
 type PedidoPendiente = {
@@ -193,7 +207,7 @@ export default function Rutas() {
     });
     if (errOpt || opt?.error) {
       setCreando(false);
-      setError(errOpt?.message ?? opt?.error ?? "No se pudo optimizar la ruta");
+      setError(errOpt ? await mensajeErrorFuncion(errOpt) : (opt?.error ?? "No se pudo optimizar la ruta"));
       return;
     }
 
