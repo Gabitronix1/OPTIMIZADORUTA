@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { MapContainer, Marker, Polyline, Popup, TileLayer } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -67,11 +67,13 @@ function formatoDuracion(min: number) {
 
 export default function RutaDetalle() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const [ruta, setRuta] = useState<RutaDetalleType | null>(null);
   const [posiciones, setPosiciones] = useState<Posicion[]>([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [confirmando, setConfirmando] = useState<string | null>(null);
+  const [eliminando, setEliminando] = useState(false);
 
   const cargar = useCallback(async () => {
     if (!id) return;
@@ -108,6 +110,19 @@ export default function RutaDetalle() {
       return;
     }
     cargar();
+  }
+
+  async function eliminarRuta() {
+    if (!id) return;
+    if (!window.confirm("¿Eliminar esta ruta? Sus pedidos vuelven a quedar pendientes.")) return;
+    setEliminando(true);
+    const { error } = await supabase.rpc("eliminar_ruta", { p_ruta_id: id });
+    setEliminando(false);
+    if (error) {
+      setError(error.message);
+      return;
+    }
+    navigate("/rutas");
   }
 
   async function confirmarEntrega(parada: ParadaDetalle) {
@@ -178,20 +193,30 @@ export default function RutaDetalle() {
             {entregadas} de {totalParadas} paradas entregadas
           </p>
         </div>
-        <label className="text-sm text-neutral-700">
-          Estado de la ruta{" "}
-          <select
-            value={ruta.estado}
-            onChange={(e) => cambiarEstadoRuta(e.target.value)}
-            className="ml-1 rounded-md border border-neutral-300 px-3 py-1.5 text-sm"
+        <div className="flex items-center gap-3">
+          <label className="text-sm text-neutral-700">
+            Estado de la ruta{" "}
+            <select
+              value={ruta.estado}
+              onChange={(e) => cambiarEstadoRuta(e.target.value)}
+              className="ml-1 rounded-md border border-neutral-300 px-3 py-1.5 text-sm"
+            >
+              {ESTADOS_RUTA.map((e) => (
+                <option key={e} value={e}>
+                  {e}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            onClick={eliminarRuta}
+            disabled={eliminando}
+            className="rounded-md border border-red-200 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 disabled:opacity-50"
           >
-            {ESTADOS_RUTA.map((e) => (
-              <option key={e} value={e}>
-                {e}
-              </option>
-            ))}
-          </select>
-        </label>
+            {eliminando ? "Eliminando…" : "Eliminar ruta"}
+          </button>
+        </div>
       </div>
 
       <div className="mt-2 flex flex-wrap gap-x-6 gap-y-1 text-sm text-neutral-500">

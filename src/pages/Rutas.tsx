@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { Marker, MapContainer, TileLayer } from "react-leaflet";
+import { Marker, MapContainer, TileLayer, useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { supabase } from "../lib/supabaseClient";
@@ -38,6 +38,8 @@ type Ruta = {
   paradas: ParadaRuta[];
 };
 
+const CENTRO_POR_DEFECTO: [number, number] = [-38.3, -73.2];
+
 const ICONO_INICIO = L.divIcon({
   className: "",
   html: '<div style="background:#16a34a;color:white;border-radius:9999px;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;border:2px solid white;box-shadow:0 1px 3px rgba(0,0,0,0.4)">S</div>',
@@ -51,6 +53,23 @@ function horaLocalPorDefecto() {
   return ahora.toISOString().slice(0, 16);
 }
 
+function CapturadorClicks({ onClick }: { onClick: (lat: number, lon: number) => void }) {
+  useMapEvents({
+    click(e) {
+      onClick(e.latlng.lat, e.latlng.lng);
+    },
+  });
+  return null;
+}
+
+function RecentradorMapa({ centro }: { centro: [number, number] }) {
+  const map = useMap();
+  useEffect(() => {
+    map.setView(centro, 13);
+  }, [centro, map]);
+  return null;
+}
+
 export default function Rutas() {
   const [camionetas, setCamionetas] = useState<Camioneta[]>([]);
   const [pedidos, setPedidos] = useState<PedidoPendiente[]>([]);
@@ -62,10 +81,12 @@ export default function Rutas() {
   const [camionetaId, setCamionetaId] = useState("");
   const [horaSalida, setHoraSalida] = useState(horaLocalPorDefecto);
   const [direccionInicio, setDireccionInicio] = useState("");
+  const [sugerencias, setSugerencias] = useState<PuntoInicio[]>([]);
   const [puntoInicio, setPuntoInicio] = useState<PuntoInicio | null>(null);
-  const [buscandoDireccion, setBuscandoDireccion] = useState(false);
   const [seleccionados, setSeleccionados] = useState<Set<string>>(new Set());
   const [creando, setCreando] = useState(false);
+  const [eliminandoId, setEliminandoId] = useState<string | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   async function cargarTodo() {
     setCargando(true);
@@ -112,23 +133,33 @@ export default function Rutas() {
     });
   }
 
-  async function buscarDireccion() {
-    if (!direccionInicio.trim()) return;
-    setBuscandoDireccion(true);
-    setError(null);
-    const { data, error } = await supabase.functions.invoke("ors-proxy", {
-      body: { accion: "geocodificar", texto: direccionInicio },
-    });
-    setBuscandoDireccion(false);
-    if (error) {
-      setError(error.message);
+  function onCambioDireccion(texto: string) {
+    setDireccionInicio(texto);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (texto.trim().length < 3) {
+      setSugerencias([]);
       return;
     }
-    if (!data?.resultado) {
-      setError("No se encontró esa dirección, prueba con otra redacción.");
-      return;
-    }
-    setPuntoInicio(data.resultado);
+    debounceRef.current = setTimeout(async () => {
+      const { data, error } = await supabase.functions.invoke("ors-proxy", {
+        body: { accion: "autocompletar", texto },
+      });
+      if (!error && data?.candidatos) {
+        setSugerencias(data.candidatos);
+      }
+    }, 400);
+  }
+
+  function elegirSugerencia(s: PuntoInicio) {
+    setPuntoInicio(s);
+    setDireccionInicio(s.etiqueta);
+    setSugerencias([]);
+  }
+
+  function onClickMapa(lat: number, lon: number) {
+    setPuntoInicio({ lat, lon, etiqueta: "Punto marcado en el mapa" });
+    setDireccionInicio("");
+    setSugerencias([]);
   }
 
   const pedidosSeleccionados = pedidos.filter((p) => seleccionados.has(p.id));
@@ -214,6 +245,18 @@ export default function Rutas() {
     cargarTodo();
   }
 
+  async function eliminarRuta(id: string) {
+    if (!window.confirm("¿Eliminar esta ruta? Sus pedidos vuelven a quedar pendientes.")) return;
+    setEliminandoId(id);
+    const { error } = await supabase.rpc("eliminar_ruta", { p_ruta_id: id });
+    setEliminandoId(null);
+    if (error) {
+      setError(error.message);
+      return;
+    }
+    cargarTodo();
+  }
+
   return (
     <div>
       <h1 className="text-2xl font-semibold">Rutas de reparto</h1>
@@ -233,22 +276,29 @@ export default function Rutas() {
           <div className="flex flex-wrap items-end gap-4">
             <label className="text-sm text-neutral-700">
               Punto de inicio
-              <div className="mt-1 flex gap-2">
+              <div className="relative mt-1">
                 <input
                   type="text"
-                  placeholder="Dirección o lugar de partida"
+                  placeholder="Escribe una dirección o lugar…"
                   value={direccionInicio}
-                  onChange={(e) => setDireccionInicio(e.target.value)}
-                  className="rounded-md border border-neutral-300 px-3 py-2 text-sm"
+                  onChange={(e) => onCambioDireccion(e.target.value)}
+                  className="w-64 rounded-md border border-neutral-300 px-3 py-2 text-sm"
                 />
-                <button
-                  type="button"
-                  onClick={buscarDireccion}
-                  disabled={buscandoDireccion}
-                  className="rounded-md border border-neutral-300 px-3 py-2 text-sm hover:bg-neutral-50 disabled:opacity-50"
-                >
-                  {buscandoDireccion ? "Buscando…" : "Buscar"}
-                </button>
+                {sugerencias.length > 0 && (
+                  <ul className="absolute z-[1000] mt-1 w-64 rounded-md border border-neutral-200 bg-white text-sm shadow-lg">
+                    {sugerencias.map((s, i) => (
+                      <li key={i}>
+                        <button
+                          type="button"
+                          onClick={() => elegirSugerencia(s)}
+                          className="block w-full px-3 py-2 text-left hover:bg-neutral-50"
+                        >
+                          {s.etiqueta}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
             </label>
             <label className="text-sm text-neutral-700">
@@ -277,30 +327,38 @@ export default function Rutas() {
             </label>
           </div>
 
-          {puntoInicio && (
-            <div className="mt-4">
-              <p className="text-xs text-neutral-500">{puntoInicio.etiqueta} — arrastra el pin si no está exacto</p>
-              <div className="mt-2 overflow-hidden rounded-lg border border-neutral-200" style={{ height: 240 }}>
-                <MapContainer center={[puntoInicio.lat, puntoInicio.lon]} zoom={13} style={{ height: "100%", width: "100%" }}>
-                  <TileLayer
-                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                  />
-                  <Marker
-                    position={[puntoInicio.lat, puntoInicio.lon]}
-                    icon={ICONO_INICIO}
-                    draggable
-                    eventHandlers={{
-                      dragend: (e) => {
-                        const { lat, lng } = e.target.getLatLng();
-                        setPuntoInicio((prev) => (prev ? { ...prev, lat, lon: lng } : prev));
-                      },
-                    }}
-                  />
-                </MapContainer>
-              </div>
+          <div className="mt-4">
+            <p className="text-xs text-neutral-500">
+              {puntoInicio
+                ? `${puntoInicio.etiqueta} — arrastra el pin para ajustar`
+                : "No aparece tu lugar en la búsqueda (típico con nombres de fundos)? Haz clic directo en el mapa para marcarlo."}
+            </p>
+            <div className="mt-2 overflow-hidden rounded-lg border border-neutral-200" style={{ height: 260 }}>
+              <MapContainer center={CENTRO_POR_DEFECTO} zoom={8} style={{ height: "100%", width: "100%" }}>
+                <TileLayer
+                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                />
+                <CapturadorClicks onClick={onClickMapa} />
+                {puntoInicio && (
+                  <>
+                    <RecentradorMapa centro={[puntoInicio.lat, puntoInicio.lon]} />
+                    <Marker
+                      position={[puntoInicio.lat, puntoInicio.lon]}
+                      icon={ICONO_INICIO}
+                      draggable
+                      eventHandlers={{
+                        dragend: (e) => {
+                          const { lat, lng } = e.target.getLatLng();
+                          setPuntoInicio((prev) => (prev ? { ...prev, lat, lon: lng } : prev));
+                        },
+                      }}
+                    />
+                  </>
+                )}
+              </MapContainer>
             </div>
-          )}
+          </div>
 
           <div className="mt-4 flex items-center gap-3">
             {camionetaElegida && (
@@ -381,11 +439,7 @@ export default function Rutas() {
             {rutas.map((r) => {
               const entregadas = r.paradas.filter((p) => p.entregas.length > 0).length;
               return (
-                <Link
-                  key={r.id}
-                  to={`/rutas/${r.id}`}
-                  className="block rounded-lg border border-neutral-200 bg-white p-4 hover:border-neutral-300 hover:shadow-sm"
-                >
+                <div key={r.id} className="rounded-lg border border-neutral-200 bg-white p-4">
                   <div className="flex flex-wrap items-center gap-3 text-sm">
                     <span className="font-medium">{r.camionetas?.patente ?? "sin camioneta"}</span>
                     <span className="text-neutral-500">{r.fecha}</span>
@@ -393,7 +447,17 @@ export default function Rutas() {
                     <span className="text-xs text-neutral-500">
                       {entregadas} de {r.paradas.length} entregadas
                     </span>
-                    <span className="ml-auto text-xs text-blue-600">Ver ficha →</span>
+                    <Link to={`/rutas/${r.id}`} className="ml-auto text-xs text-blue-600 underline">
+                      Ver ficha →
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => eliminarRuta(r.id)}
+                      disabled={eliminandoId === r.id}
+                      className="text-xs text-red-600 underline disabled:opacity-50"
+                    >
+                      {eliminandoId === r.id ? "Eliminando…" : "Eliminar"}
+                    </button>
                   </div>
                   <ol className="mt-3 list-decimal space-y-1 pl-5 text-sm">
                     {r.paradas
@@ -407,7 +471,7 @@ export default function Rutas() {
                         </li>
                       ))}
                   </ol>
-                </Link>
+                </div>
               );
             })}
           </div>
