@@ -7,6 +7,7 @@ const NAV_ITEMS = [
   { to: "/ubicaciones", label: "Ubicaciones" },
   { to: "/produccion", label: "Producción" },
   { to: "/mantenimiento", label: "Mantención" },
+  { to: "/flota", label: "Flota" },
   { to: "/equipos", label: "Equipos" },
   { to: "/pedidos", label: "Pedidos" },
   { to: "/bodega", label: "Bodega" },

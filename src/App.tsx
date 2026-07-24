@@ -7,6 +7,7 @@ import Ubicaciones from "./pages/Ubicaciones";
 import Mantenimiento from "./pages/Mantenimiento";
 import Produccion from "./pages/Produccion";
 import Stock from "./pages/Stock";
+import Flota from "./pages/Flota";
 import Placeholder from "./pages/Placeholder";
 import { useAuth } from "./lib/useAuth";
 
@@ -33,6 +34,7 @@ export default function App() {
           <Route path="ubicaciones" element={<Ubicaciones />} />
           <Route path="produccion" element={<Produccion />} />
           <Route path="mantenimiento" element={<Mantenimiento />} />
+          <Route path="flota" element={<Flota />} />
           <Route path="equipos" element={<Placeholder titulo="Equipos" />} />
           <Route path="pedidos" element={<Placeholder titulo="Pedidos" />} />
           <Route path="bodega" element={<Stock />} />
