@@ -12,6 +12,7 @@ import Equipos from "./pages/Equipos";
 import Mapa from "./pages/Mapa";
 import Pedidos from "./pages/Pedidos";
 import Rutas from "./pages/Rutas";
+import RutaDetalle from "./pages/RutaDetalle";
 import { useAuth } from "./lib/useAuth";
 
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -42,6 +43,7 @@ export default function App() {
           <Route path="equipos" element={<Equipos />} />
           <Route path="pedidos" element={<Pedidos />} />
           <Route path="rutas" element={<Rutas />} />
+          <Route path="rutas/:id" element={<RutaDetalle />} />
           <Route path="bodega" element={<Stock />} />
         </Route>
       </Routes>

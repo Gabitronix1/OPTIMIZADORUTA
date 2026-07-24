@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
 import { ordenarPorVecinoMasCercano, type Punto } from "../lib/rutas";
 
@@ -17,6 +18,7 @@ type PosicionEquipo = { equipo_id: string; lat: number; lon: number };
 type ParadaRuta = {
   id: string;
   orden: number;
+  entregas: { id: string }[];
   pedidos: {
     cantidad: number;
     insumos: { nombre: string } | null;
@@ -57,7 +59,9 @@ export default function Rutas() {
       supabase.from("equipos_mapa").select("equipo_id, lat, lon"),
       supabase
         .from("rutas")
-        .select("id, fecha, estado, camionetas(patente), paradas(id, orden, pedidos(cantidad, insumos(nombre), equipos(identificador)))")
+        .select(
+          "id, fecha, estado, camionetas(patente), paradas(id, orden, entregas(id), pedidos(cantidad, insumos(nombre), equipos(identificador)))"
+        )
         .order("fecha", { ascending: false })
         .order("orden", { foreignTable: "paradas", ascending: true })
         .limit(30),
@@ -252,26 +256,38 @@ export default function Rutas() {
           <p className="mt-2 text-sm text-neutral-500">Todavía no hay rutas creadas.</p>
         ) : (
           <div className="mt-3 space-y-4">
-            {rutas.map((r) => (
-              <div key={r.id} className="rounded-lg border border-neutral-200 bg-white p-4">
-                <div className="flex flex-wrap items-center gap-3 text-sm">
-                  <span className="font-medium">{r.camionetas?.patente ?? "sin camioneta"}</span>
-                  <span className="text-neutral-500">{r.fecha}</span>
-                  <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs text-neutral-600">{r.estado}</span>
-                </div>
-                <ol className="mt-3 list-decimal space-y-1 pl-5 text-sm">
-                  {r.paradas
-                    .slice()
-                    .sort((a, b) => a.orden - b.orden)
-                    .map((parada) => (
-                      <li key={parada.id}>
-                        {parada.pedidos?.equipos?.identificador ?? "—"} · {parada.pedidos?.insumos?.nombre ?? "—"} (
-                        {parada.pedidos?.cantidad ?? "—"})
-                      </li>
-                    ))}
-                </ol>
-              </div>
-            ))}
+            {rutas.map((r) => {
+              const entregadas = r.paradas.filter((p) => p.entregas.length > 0).length;
+              return (
+                <Link
+                  key={r.id}
+                  to={`/rutas/${r.id}`}
+                  className="block rounded-lg border border-neutral-200 bg-white p-4 hover:border-neutral-300 hover:shadow-sm"
+                >
+                  <div className="flex flex-wrap items-center gap-3 text-sm">
+                    <span className="font-medium">{r.camionetas?.patente ?? "sin camioneta"}</span>
+                    <span className="text-neutral-500">{r.fecha}</span>
+                    <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs text-neutral-600">{r.estado}</span>
+                    <span className="text-xs text-neutral-500">
+                      {entregadas} de {r.paradas.length} entregadas
+                    </span>
+                    <span className="ml-auto text-xs text-blue-600">Ver ficha →</span>
+                  </div>
+                  <ol className="mt-3 list-decimal space-y-1 pl-5 text-sm">
+                    {r.paradas
+                      .slice()
+                      .sort((a, b) => a.orden - b.orden)
+                      .map((parada) => (
+                        <li key={parada.id}>
+                          {parada.pedidos?.equipos?.identificador ?? "—"} · {parada.pedidos?.insumos?.nombre ?? "—"} (
+                          {parada.pedidos?.cantidad ?? "—"})
+                          {parada.entregas.length > 0 && <span className="ml-2 text-green-700">✓ entregado</span>}
+                        </li>
+                      ))}
+                  </ol>
+                </Link>
+              );
+            })}
           </div>
         )}
       </section>
