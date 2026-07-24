@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Tractor, TriangleAlert, Wrench } from "lucide-react";
+import { Filter, Tractor, TriangleAlert, Wrench } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 import PageHeader from "../components/ui/PageHeader";
 import Card from "../components/ui/Card";
@@ -9,7 +9,28 @@ import Select from "../components/ui/Select";
 import Spinner from "../components/ui/Spinner";
 import EmptyState from "../components/ui/EmptyState";
 
-type Equipo = { id: string; identificador: string };
+type Contrato = { id: string; codigo: string };
+
+type Equipo = {
+  id: string;
+  identificador: string;
+  contrato_id: string | null;
+  contratos: { codigo: string } | null;
+};
+
+type ResumenEquipo = {
+  equipo_id: string;
+  horometro_actual: number | null;
+  total_items: number;
+  vencidas: number;
+  proximas: number;
+};
+
+type ProximaMantencion = {
+  plan_item_id: string;
+  equipo_id: string;
+  horas_restantes: number;
+};
 
 type PlanItem = {
   id: string;
@@ -20,19 +41,8 @@ type PlanItem = {
   insumos: { nombre: string; codigo_pieza: string | null } | null;
 };
 
-type ProximaMantencion = {
-  plan_item_id: string;
-  identificador: string;
-  accion: string;
-  descripcion: string;
-  frecuencia_horas: number;
-  horometro_actual: number;
-  proxima_hora: number;
-  horas_restantes: number;
-  cantidad_texto: string | null;
-};
-
-function badgeUrgencia(horas: number) {
+function badgeUrgencia(horas: number | null) {
+  if (horas === null) return <Badge tone="neutral">Sin datos</Badge>;
   if (horas <= 0) return <Badge tone="danger">Vencido ({Math.abs(horas)} hrs)</Badge>;
   if (horas <= 50) return <Badge tone="warning">{horas} hrs</Badge>;
   return <Badge tone="neutral">{horas} hrs</Badge>;
@@ -40,71 +50,136 @@ function badgeUrgencia(horas: number) {
 
 export default function Mantenimiento() {
   const [equipos, setEquipos] = useState<Equipo[]>([]);
-  const [equipoId, setEquipoId] = useState("");
+  const [contratos, setContratos] = useState<Contrato[]>([]);
+  const [resumenes, setResumenes] = useState<ResumenEquipo[]>([]);
+  const [proximasEquipo, setProximasEquipo] = useState<ProximaMantencion[]>([]);
   const [items, setItems] = useState<PlanItem[]>([]);
-  const [proximas, setProximas] = useState<ProximaMantencion[]>([]);
-  const [cargandoItems, setCargandoItems] = useState(false);
+  const [equipoSeleccionado, setEquipoSeleccionado] = useState("");
+  const [cargando, setCargando] = useState(true);
+  const [cargandoDetalle, setCargandoDetalle] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [contratoFiltro, setContratoFiltro] = useState("");
   const [busqueda, setBusqueda] = useState("");
 
   useEffect(() => {
-    supabase
-      .from("equipos")
-      .select("id, identificador")
-      .order("identificador")
-      .then(({ data, error }) => {
-        if (error) {
-          setError(error.message);
-          return;
-        }
-        setEquipos(data ?? []);
-      });
-
-    supabase
-      .from("proximas_mantenciones")
-      .select("*")
-      .order("horas_restantes", { ascending: true })
-      .limit(30)
-      .then(({ data, error }) => {
-        if (!error) setProximas(data ?? []);
-      });
+    async function cargar() {
+      setCargando(true);
+      const [equiposRes, contratosRes, resumenRes] = await Promise.all([
+        supabase.from("equipos").select("id, identificador, contrato_id, contratos(codigo)").order("identificador"),
+        supabase.from("contratos").select("id, codigo").order("codigo"),
+        supabase.from("mantenciones_resumen_equipo").select("equipo_id, horometro_actual, total_items, vencidas, proximas"),
+      ]);
+      setCargando(false);
+      if (equiposRes.error) {
+        setError(equiposRes.error.message);
+        return;
+      }
+      setEquipos((equiposRes.data ?? []) as unknown as Equipo[]);
+      setContratos(contratosRes.data ?? []);
+      setResumenes((resumenRes.data ?? []) as ResumenEquipo[]);
+    }
+    cargar();
   }, []);
 
   useEffect(() => {
-    if (!equipoId) {
+    if (!equipoSeleccionado) {
       setItems([]);
+      setProximasEquipo([]);
       return;
     }
-    setCargandoItems(true);
-    supabase
-      .from("plan_mantenimiento_items")
-      .select("id, accion, descripcion, cantidad_texto, frecuencia_horas, insumos(nombre, codigo_pieza)")
-      .eq("equipo_id", equipoId)
-      .order("frecuencia_horas")
-      .then(({ data, error }) => {
-        setCargandoItems(false);
-        if (error) {
-          setError(error.message);
-          return;
-        }
-        setItems((data ?? []) as unknown as PlanItem[]);
-      });
-  }, [equipoId]);
+    setCargandoDetalle(true);
+    Promise.all([
+      supabase
+        .from("plan_mantenimiento_items")
+        .select("id, accion, descripcion, cantidad_texto, frecuencia_horas, insumos(nombre, codigo_pieza)")
+        .eq("equipo_id", equipoSeleccionado)
+        .order("frecuencia_horas"),
+      supabase
+        .from("proximas_mantenciones")
+        .select("plan_item_id, equipo_id, horas_restantes")
+        .eq("equipo_id", equipoSeleccionado),
+    ]).then(([itemsRes, proximasRes]) => {
+      setCargandoDetalle(false);
+      if (itemsRes.error) {
+        setError(itemsRes.error.message);
+        return;
+      }
+      setItems((itemsRes.data ?? []) as unknown as PlanItem[]);
+      setProximasEquipo((proximasRes.data ?? []) as ProximaMantencion[]);
+    });
+  }, [equipoSeleccionado]);
 
-  const proximasFiltradas = useMemo(() => {
+  const resumenPorEquipo = useMemo(() => {
+    const mapa = new Map<string, ResumenEquipo>();
+    for (const r of resumenes) mapa.set(r.equipo_id, r);
+    return mapa;
+  }, [resumenes]);
+
+  const grupos = useMemo(() => {
     const texto = busqueda.trim().toLowerCase();
-    if (!texto) return proximas;
-    return proximas.filter(
-      (p) => p.identificador.toLowerCase().includes(texto) || p.descripcion.toLowerCase().includes(texto)
-    );
-  }, [proximas, busqueda]);
+    const filtrados = equipos.filter((eq) => {
+      const coincideTexto = !texto || eq.identificador.toLowerCase().includes(texto);
+      const coincideContrato = !contratoFiltro || eq.contrato_id === contratoFiltro;
+      return coincideTexto && coincideContrato;
+    });
+
+    const mapa = new Map<string, { contratoId: string | null; codigo: string; equipos: Equipo[] }>();
+    for (const eq of filtrados) {
+      const key = eq.contrato_id ?? "sin-contrato";
+      const codigo = eq.contratos?.codigo ?? "Sin contrato";
+      if (!mapa.has(key)) mapa.set(key, { contratoId: eq.contrato_id, codigo, equipos: [] });
+      mapa.get(key)!.equipos.push(eq);
+    }
+
+    return Array.from(mapa.values())
+      .map((g) => ({
+        ...g,
+        equipos: g.equipos.sort((a, b) => {
+          const ra = resumenPorEquipo.get(a.id);
+          const rb = resumenPorEquipo.get(b.id);
+          const va = ra?.vencidas ?? 0;
+          const vb = rb?.vencidas ?? 0;
+          if (va !== vb) return vb - va;
+          const pa = ra?.proximas ?? 0;
+          const pb = rb?.proximas ?? 0;
+          if (pa !== pb) return pb - pa;
+          return a.identificador.localeCompare(b.identificador);
+        }),
+      }))
+      .sort((a, b) => a.codigo.localeCompare(b.codigo));
+  }, [equipos, busqueda, contratoFiltro, resumenPorEquipo]);
+
+  const totales = useMemo(
+    () =>
+      resumenes.reduce(
+        (acc, r) => ({
+          vencidas: acc.vencidas + r.vencidas,
+          proximas: acc.proximas + r.proximas,
+        }),
+        { vencidas: 0, proximas: 0 }
+      ),
+    [resumenes]
+  );
+
+  const equipoActivo = equipos.find((eq) => eq.id === equipoSeleccionado) ?? null;
+
+  const itemsConUrgencia = useMemo(() => {
+    const mapaUrgencia = new Map(proximasEquipo.map((p) => [p.plan_item_id, p.horas_restantes]));
+    return items
+      .map((it) => ({ item: it, horasRestantes: mapaUrgencia.get(it.id) ?? null }))
+      .sort((a, b) => {
+        const ha = a.horasRestantes ?? Infinity;
+        const hb = b.horasRestantes ?? Infinity;
+        return ha - hb;
+      });
+  }, [items, proximasEquipo]);
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <PageHeader
         icon={<Wrench className="size-5" />}
         title="Plan de mantenimiento"
-        description="Plan preventivo por equipo y qué mantenciones están próximas según el último horómetro registrado."
+        description="Mantenciones agrupadas por contrato y equipo. Selecciona un equipo para ver su plan preventivo completo con la urgencia de cada componente."
       />
 
       {error && (
@@ -114,96 +189,136 @@ export default function Mantenimiento() {
         </div>
       )}
 
-      <section>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-lg font-medium text-neutral-900">Próximas mantenciones</h2>
-          {proximas.length > 0 && (
-            <SearchInput value={busqueda} onChange={setBusqueda} placeholder="Filtrar por equipo o componente…" className="w-72" />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          {contratos.length > 0 && (
+            <Select
+              value={contratoFiltro}
+              onChange={(e) => setContratoFiltro(e.target.value)}
+              icon={<Filter className="size-4" />}
+              className="w-52"
+            >
+              <option value="">Todos los contratos</option>
+              {contratos.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.codigo}
+                </option>
+              ))}
+            </Select>
+          )}
+          {equipos.length > 0 && (
+            <SearchInput value={busqueda} onChange={setBusqueda} placeholder="Buscar equipo…" className="w-64" />
           )}
         </div>
-        {proximas.length === 0 ? (
-          <EmptyState icon={<Wrench className="size-8" />}>
-            Aún no hay lecturas de horómetro cargadas. Sube el archivo de ubicaciones del dealer en{" "}
-            <a href="/ubicaciones" className="font-medium text-pine-700 underline">
-              Ubicaciones
-            </a>{" "}
-            para poder calcular qué mantenciones están próximas.
-          </EmptyState>
-        ) : (
-          <Card className="mt-3 max-h-96 overflow-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="sticky top-0 bg-neutral-50 text-neutral-600">
-                <tr>
-                  <th className="px-3 py-2 font-medium">Equipo</th>
-                  <th className="px-3 py-2 font-medium">Acción</th>
-                  <th className="px-3 py-2 font-medium">Componente</th>
-                  <th className="px-3 py-2 font-medium">Horómetro actual</th>
-                  <th className="px-3 py-2 font-medium">Próxima hora</th>
-                  <th className="px-3 py-2 font-medium">Horas restantes</th>
-                </tr>
-              </thead>
-              <tbody>
-                {proximasFiltradas.map((p) => (
-                  <tr key={p.plan_item_id} className="border-t border-neutral-100 hover:bg-neutral-50/60">
-                    <td className="px-3 py-1.5 font-medium text-neutral-800">{p.identificador}</td>
-                    <td className="px-3 py-1.5">{p.accion}</td>
-                    <td className="px-3 py-1.5">{p.descripcion}</td>
-                    <td className="px-3 py-1.5 tabular-nums">{p.horometro_actual}</td>
-                    <td className="px-3 py-1.5 tabular-nums">{p.proxima_hora}</td>
-                    <td className="px-3 py-1.5">{badgeUrgencia(p.horas_restantes)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </Card>
+        {!cargando && (
+          <div className="flex items-center gap-2 text-sm text-neutral-500">
+            <Badge tone="danger">{totales.vencidas} vencidas</Badge>
+            <Badge tone="warning">{totales.proximas} próximas</Badge>
+          </div>
         )}
-      </section>
+      </div>
 
-      <section>
-        <h2 className="text-lg font-medium text-neutral-900">Plan completo por equipo</h2>
-        <Select
-          value={equipoId}
-          onChange={(e) => setEquipoId(e.target.value)}
-          icon={<Tractor className="size-4" />}
-          className="mt-3 max-w-xs"
-        >
-          <option value="">Selecciona un equipo…</option>
-          {equipos.map((eq) => (
-            <option key={eq.id} value={eq.id}>
-              {eq.identificador}
-            </option>
-          ))}
-        </Select>
+      {cargando ? (
+        <Spinner />
+      ) : grupos.length === 0 ? (
+        <EmptyState icon={<Wrench className="size-8" />}>Ningún equipo coincide con el filtro.</EmptyState>
+      ) : (
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[400px_1fr] lg:items-start">
+          <div className="space-y-4">
+            {grupos.map((g) => (
+              <Card key={g.contratoId ?? "sin-contrato"} className="overflow-hidden">
+                <div className="border-b border-neutral-100 bg-neutral-50 px-4 py-2">
+                  <h3 className="text-sm font-semibold text-neutral-800">{g.codigo}</h3>
+                  <p className="text-xs text-neutral-500">
+                    {g.equipos.length} equipo{g.equipos.length === 1 ? "" : "s"}
+                  </p>
+                </div>
+                <ul>
+                  {g.equipos.map((eq) => {
+                    const r = resumenPorEquipo.get(eq.id);
+                    const activo = eq.id === equipoSeleccionado;
+                    return (
+                      <li key={eq.id} className="border-t border-neutral-100 first:border-t-0">
+                        <button
+                          type="button"
+                          onClick={() => setEquipoSeleccionado(eq.id)}
+                          className={`flex w-full items-center justify-between gap-2 px-4 py-2.5 text-left text-sm transition-colors ${
+                            activo ? "bg-pine-50" : "hover:bg-neutral-50"
+                          }`}
+                        >
+                          <span>
+                            <span className="font-medium text-neutral-800">{eq.identificador}</span>
+                            <span className="block text-xs text-neutral-400">
+                              {r?.horometro_actual !== null && r?.horometro_actual !== undefined
+                                ? `${r.horometro_actual} hrs · ${r.total_items} ítems`
+                                : "sin horómetro"}
+                            </span>
+                          </span>
+                          <span className="flex shrink-0 gap-1.5">
+                            {r && r.vencidas > 0 && <Badge tone="danger">{r.vencidas}</Badge>}
+                            {r && r.proximas > 0 && <Badge tone="warning">{r.proximas}</Badge>}
+                            {r && r.vencidas === 0 && r.proximas === 0 && <Badge tone="success">Al día</Badge>}
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </Card>
+            ))}
+          </div>
 
-        {cargandoItems && <Spinner />}
-
-        {!cargandoItems && equipoId && (
-          <Card className="mt-3 max-h-96 overflow-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="sticky top-0 bg-neutral-50 text-neutral-600">
-                <tr>
-                  <th className="px-3 py-2 font-medium">Acción</th>
-                  <th className="px-3 py-2 font-medium">Componente</th>
-                  <th className="px-3 py-2 font-medium">Código repuesto</th>
-                  <th className="px-3 py-2 font-medium">Cantidad</th>
-                  <th className="px-3 py-2 font-medium">Frecuencia (hrs)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((it) => (
-                  <tr key={it.id} className="border-t border-neutral-100 hover:bg-neutral-50/60">
-                    <td className="px-3 py-1.5">{it.accion}</td>
-                    <td className="px-3 py-1.5">{it.descripcion}</td>
-                    <td className="px-3 py-1.5">{it.insumos?.codigo_pieza ?? "—"}</td>
-                    <td className="px-3 py-1.5">{it.cantidad_texto ?? "—"}</td>
-                    <td className="px-3 py-1.5 tabular-nums">{it.frecuencia_horas}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </Card>
-        )}
-      </section>
+          <div>
+            {!equipoSeleccionado ? (
+              <EmptyState icon={<Tractor className="size-8" />}>
+                Selecciona un equipo de la izquierda para ver su plan de mantenimiento completo.
+              </EmptyState>
+            ) : cargandoDetalle ? (
+              <Spinner />
+            ) : (
+              <Card>
+                <div className="border-b border-neutral-100 px-4 py-3">
+                  <h3 className="font-medium text-neutral-900">{equipoActivo?.identificador}</h3>
+                  <p className="text-xs text-neutral-500">
+                    {equipoActivo?.contratos?.codigo ?? "Sin contrato"} · horómetro{" "}
+                    {resumenPorEquipo.get(equipoSeleccionado)?.horometro_actual ?? "—"}
+                  </p>
+                </div>
+                {itemsConUrgencia.length === 0 ? (
+                  <EmptyState icon={<Wrench className="size-8" />}>Este equipo no tiene plan de mantenimiento cargado.</EmptyState>
+                ) : (
+                  <div className="max-h-[36rem] overflow-auto">
+                    <table className="w-full text-left text-sm">
+                      <thead className="sticky top-0 bg-neutral-50 text-neutral-600">
+                        <tr>
+                          <th className="px-3 py-2 font-medium">Acción</th>
+                          <th className="px-3 py-2 font-medium">Componente</th>
+                          <th className="px-3 py-2 font-medium">Código repuesto</th>
+                          <th className="px-3 py-2 font-medium">Cantidad</th>
+                          <th className="px-3 py-2 font-medium">Frecuencia (hrs)</th>
+                          <th className="px-3 py-2 font-medium">Estado</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {itemsConUrgencia.map(({ item, horasRestantes }) => (
+                          <tr key={item.id} className="border-t border-neutral-100 hover:bg-neutral-50/60">
+                            <td className="px-3 py-1.5">{item.accion}</td>
+                            <td className="px-3 py-1.5">{item.descripcion}</td>
+                            <td className="px-3 py-1.5">{item.insumos?.codigo_pieza ?? "—"}</td>
+                            <td className="px-3 py-1.5">{item.cantidad_texto ?? "—"}</td>
+                            <td className="px-3 py-1.5 tabular-nums">{item.frecuencia_horas}</td>
+                            <td className="px-3 py-1.5">{badgeUrgencia(horasRestantes)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </Card>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { Pencil, Plus, Save, Tractor, TriangleAlert, X } from "lucide-react";
+import { Fragment, useEffect, useMemo, useState } from "react";
+import { Filter, Pencil, Plus, Save, Tractor, TriangleAlert, X } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 import PageHeader from "../components/ui/PageHeader";
 import Card from "../components/ui/Card";
@@ -51,6 +51,7 @@ export default function Equipos() {
   const [editandoId, setEditandoId] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
   const [busqueda, setBusqueda] = useState("");
+  const [contratoFiltro, setContratoFiltro] = useState("");
 
   async function cargarEquipos() {
     setCargando(true);
@@ -124,14 +125,27 @@ export default function Equipos() {
 
   const equiposFiltrados = useMemo(() => {
     const texto = busqueda.trim().toLowerCase();
-    if (!texto) return equipos;
-    return equipos.filter(
-      (eq) =>
+    return equipos.filter((eq) => {
+      const coincideTexto =
+        !texto ||
         eq.identificador.toLowerCase().includes(texto) ||
         (eq.tipo ?? "").toLowerCase().includes(texto) ||
-        (eq.contratos?.codigo ?? "").toLowerCase().includes(texto)
-    );
-  }, [equipos, busqueda]);
+        (eq.contratos?.codigo ?? "").toLowerCase().includes(texto);
+      const coincideContrato = !contratoFiltro || eq.contrato_id === contratoFiltro;
+      return coincideTexto && coincideContrato;
+    });
+  }, [equipos, busqueda, contratoFiltro]);
+
+  const gruposEquipos = useMemo(() => {
+    const mapa = new Map<string, { contratoId: string | null; codigo: string; equipos: Equipo[] }>();
+    for (const eq of equiposFiltrados) {
+      const key = eq.contrato_id ?? "sin-contrato";
+      const codigo = eq.contratos?.codigo ?? "Sin contrato";
+      if (!mapa.has(key)) mapa.set(key, { contratoId: eq.contrato_id, codigo, equipos: [] });
+      mapa.get(key)!.equipos.push(eq);
+    }
+    return Array.from(mapa.values()).sort((a, b) => a.codigo.localeCompare(b.codigo));
+  }, [equiposFiltrados]);
 
   return (
     <div className="space-y-6">
@@ -217,7 +231,24 @@ export default function Equipos() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-lg font-medium text-neutral-900">Listado</h2>
         {equipos.length > 0 && (
-          <SearchInput value={busqueda} onChange={setBusqueda} placeholder="Buscar por identificador, tipo o contrato…" className="w-80" />
+          <div className="flex flex-wrap items-center gap-2">
+            {contratos.length > 0 && (
+              <Select
+                value={contratoFiltro}
+                onChange={(e) => setContratoFiltro(e.target.value)}
+                icon={<Filter className="size-4" />}
+                className="w-52"
+              >
+                <option value="">Todos los contratos</option>
+                {contratos.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.codigo}
+                  </option>
+                ))}
+              </Select>
+            )}
+            <SearchInput value={busqueda} onChange={setBusqueda} placeholder="Buscar por identificador o tipo…" className="w-72" />
+          </div>
         )}
       </div>
 
@@ -247,26 +278,35 @@ export default function Equipos() {
                   </td>
                 </tr>
               ) : (
-                equiposFiltrados.map((eq) => (
-                  <tr key={eq.id} className="border-t border-neutral-100 hover:bg-neutral-50/60">
-                    <td className="px-3 py-1.5 font-medium text-neutral-800">{eq.identificador}</td>
-                    <td className="px-3 py-1.5">{eq.tipo ?? "—"}</td>
-                    <td className="px-3 py-1.5">
-                      <Badge tone={TONO_ESTADO[eq.estado]}>{eq.estado}</Badge>
-                    </td>
-                    <td className="px-3 py-1.5">{eq.contratos?.codigo ?? "—"}</td>
-                    <td className="px-3 py-1.5 tabular-nums">{eq.horometro_actual ?? "—"}</td>
-                    <td className="px-3 py-1.5">
-                      {eq.horometro_actualizado_at
-                        ? new Date(eq.horometro_actualizado_at).toLocaleDateString("es-CL")
-                        : "—"}
-                    </td>
-                    <td className="px-3 py-1.5 text-right">
-                      <Button variant="ghost" size="sm" onClick={() => editar(eq)} icon={<Pencil className="size-3.5" />}>
-                        Editar
-                      </Button>
-                    </td>
-                  </tr>
+                gruposEquipos.map((g) => (
+                  <Fragment key={g.contratoId ?? "sin-contrato"}>
+                    <tr className="border-t border-neutral-200 bg-neutral-50">
+                      <td colSpan={7} className="px-3 py-1.5 text-xs font-semibold tracking-wide text-neutral-500 uppercase">
+                        {g.codigo} · {g.equipos.length} equipo{g.equipos.length === 1 ? "" : "s"}
+                      </td>
+                    </tr>
+                    {g.equipos.map((eq) => (
+                      <tr key={eq.id} className="border-t border-neutral-100 hover:bg-neutral-50/60">
+                        <td className="px-3 py-1.5 font-medium text-neutral-800">{eq.identificador}</td>
+                        <td className="px-3 py-1.5">{eq.tipo ?? "—"}</td>
+                        <td className="px-3 py-1.5">
+                          <Badge tone={TONO_ESTADO[eq.estado]}>{eq.estado}</Badge>
+                        </td>
+                        <td className="px-3 py-1.5">{eq.contratos?.codigo ?? "—"}</td>
+                        <td className="px-3 py-1.5 tabular-nums">{eq.horometro_actual ?? "—"}</td>
+                        <td className="px-3 py-1.5">
+                          {eq.horometro_actualizado_at
+                            ? new Date(eq.horometro_actualizado_at).toLocaleDateString("es-CL")
+                            : "—"}
+                        </td>
+                        <td className="px-3 py-1.5 text-right">
+                          <Button variant="ghost" size="sm" onClick={() => editar(eq)} icon={<Pencil className="size-3.5" />}>
+                            Editar
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </Fragment>
                 ))
               )}
             </tbody>

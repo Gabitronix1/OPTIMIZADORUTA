@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Factory, TriangleAlert, Upload } from "lucide-react";
+import { Factory, Filter, TriangleAlert, Upload } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 import { parsearReporteProduccion, type ResultadoParseoProduccion, type TurnoParseado } from "../lib/produccion";
 import PageHeader from "../components/ui/PageHeader";
 import Card from "../components/ui/Card";
 import Badge from "../components/ui/Badge";
 import SearchInput from "../components/ui/SearchInput";
+import Select from "../components/ui/Select";
 import Spinner from "../components/ui/Spinner";
 import EmptyState from "../components/ui/EmptyState";
 import Button from "../components/ui/Button";
 
 type Equipo = { id: string; identificador: string };
+type Contrato = { id: string; codigo: string };
 
 type FilaConMatch = TurnoParseado & {
   equipoId: string | null;
@@ -23,6 +25,7 @@ type TurnoCargado = {
   dia_jornada: string;
   horometro_inicio: number | null;
   horometro_termino: number | null;
+  contrato_id: string | null;
   equipos: { identificador: string } | null;
   contratos: { codigo: string } | null;
   fundos: { nombre: string } | null;
@@ -30,6 +33,7 @@ type TurnoCargado = {
 
 export default function Produccion() {
   const [equipos, setEquipos] = useState<Equipo[] | null>(null);
+  const [contratos, setContratos] = useState<Contrato[]>([]);
   const [errorEquipos, setErrorEquipos] = useState<string | null>(null);
   const [resultado, setResultado] = useState<ResultadoParseoProduccion | null>(null);
   const [nombreArchivo, setNombreArchivo] = useState<string | null>(null);
@@ -39,16 +43,20 @@ export default function Produccion() {
   const [totalCargadas, setTotalCargadas] = useState(0);
   const [cargandoTabla, setCargandoTabla] = useState(true);
   const [busqueda, setBusqueda] = useState("");
+  const [contratoFiltro, setContratoFiltro] = useState("");
 
-  async function cargarTablaProduccion() {
+  async function cargarTablaProduccion(contratoId: string) {
     setCargandoTabla(true);
-    const { data, error, count } = await supabase
+    let query = supabase
       .from("lecturas_horometro_turno")
-      .select("id, dia_jornada, horometro_inicio, horometro_termino, equipos(identificador), contratos(codigo), fundos(nombre)", {
-        count: "exact",
-      })
+      .select(
+        "id, dia_jornada, horometro_inicio, horometro_termino, contrato_id, equipos(identificador), contratos(codigo), fundos(nombre)",
+        { count: "exact" }
+      )
       .order("dia_jornada", { ascending: false })
       .limit(300);
+    if (contratoId) query = query.eq("contrato_id", contratoId);
+    const { data, error, count } = await query;
     setCargandoTabla(false);
     if (error) {
       setErrorEquipos(error.message);
@@ -69,8 +77,18 @@ export default function Produccion() {
         }
         setEquipos(data ?? []);
       });
-    cargarTablaProduccion();
+    supabase
+      .from("contratos")
+      .select("id, codigo")
+      .order("codigo")
+      .then(({ data, error }) => {
+        if (!error) setContratos(data ?? []);
+      });
   }, []);
+
+  useEffect(() => {
+    cargarTablaProduccion(contratoFiltro);
+  }, [contratoFiltro]);
 
   const onArchivoSeleccionado = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const archivo = e.target.files?.[0];
@@ -136,7 +154,7 @@ export default function Produccion() {
       setEstadoCarga("listo");
       setMensajeCarga(`${exitosas} turnos cargados correctamente.`);
     }
-    cargarTablaProduccion();
+    cargarTablaProduccion(contratoFiltro);
   }
 
   return (
@@ -157,14 +175,31 @@ export default function Produccion() {
       <section>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-medium text-neutral-900">Turnos cargados</h2>
-          {cargadas.length > 0 && (
-            <SearchInput
-              value={busqueda}
-              onChange={setBusqueda}
-              placeholder="Filtrar por equipo, contrato o fundo…"
-              className="w-72"
-            />
-          )}
+          <div className="flex flex-wrap items-center gap-2">
+            {contratos.length > 0 && (
+              <Select
+                value={contratoFiltro}
+                onChange={(e) => setContratoFiltro(e.target.value)}
+                icon={<Filter className="size-4" />}
+                className="w-52"
+              >
+                <option value="">Todos los contratos</option>
+                {contratos.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.codigo}
+                  </option>
+                ))}
+              </Select>
+            )}
+            {cargadas.length > 0 && (
+              <SearchInput
+                value={busqueda}
+                onChange={setBusqueda}
+                placeholder="Filtrar por equipo o fundo…"
+                className="w-64"
+              />
+            )}
+          </div>
         </div>
         {cargandoTabla ? (
           <Spinner />
