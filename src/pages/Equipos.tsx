@@ -23,7 +23,9 @@ type Equipo = {
   contrato_id: string | null;
   horometro_actual: number | null;
   horometro_actualizado_at: string | null;
+  maquina_base_id: string | null;
   contratos: { codigo: string } | null;
+  maquina_base: { identificador: string } | null;
 };
 
 const ESTADOS: Estado[] = ["operativo", "mantencion", "traslado", "detenido"];
@@ -40,6 +42,7 @@ const FORM_VACIO = {
   tipo: "",
   estado: "operativo" as Estado,
   contrato_id: "",
+  maquina_base_id: "",
 };
 
 export default function Equipos() {
@@ -57,7 +60,9 @@ export default function Equipos() {
     setCargando(true);
     const { data, error } = await supabase
       .from("equipos")
-      .select("id, identificador, tipo, estado, contrato_id, horometro_actual, horometro_actualizado_at, contratos(codigo)")
+      .select(
+        "id, identificador, tipo, estado, contrato_id, horometro_actual, horometro_actualizado_at, maquina_base_id, contratos(codigo), maquina_base:equipos!maquina_base_id(identificador)"
+      )
       .order("identificador");
     setCargando(false);
     if (error) {
@@ -85,6 +90,7 @@ export default function Equipos() {
       tipo: eq.tipo ?? "",
       estado: eq.estado,
       contrato_id: eq.contrato_id ?? "",
+      maquina_base_id: eq.maquina_base_id ?? "",
     });
   }
 
@@ -105,6 +111,7 @@ export default function Equipos() {
             tipo: form.tipo.trim() || null,
             estado: form.estado,
             contrato_id: form.contrato_id || null,
+            maquina_base_id: form.maquina_base_id || null,
           })
           .eq("id", editandoId)
       : await supabase.from("equipos").insert({
@@ -112,6 +119,7 @@ export default function Equipos() {
           tipo: form.tipo.trim() || null,
           estado: form.estado,
           contrato_id: form.contrato_id || null,
+          maquina_base_id: form.maquina_base_id || null,
         });
 
     setGuardando(false);
@@ -152,7 +160,7 @@ export default function Equipos() {
       <PageHeader
         icon={<Tractor className="size-5" />}
         title="Equipos"
-        description="Maquinaria de la flota forestal. El horómetro se actualiza automáticamente al subir datos en Ubicaciones o Producción, así que no es editable aquí."
+        description="Maquinaria de la flota forestal. El horómetro se actualiza automáticamente al subir datos en Ubicaciones o Producción, así que no es editable aquí. Si un cabezal (accesorio) está montado sobre otra máquina, márcalo en «Cabezal de»: comparte ubicación y horas de uso con su máquina base, pero mantiene su propio plan de mantenimiento e insumos."
       />
 
       {error && (
@@ -163,7 +171,7 @@ export default function Equipos() {
       )}
 
       <Card className="p-4">
-        <form onSubmit={onSubmit} className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <form onSubmit={onSubmit} className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
           <label className="text-sm font-medium text-neutral-700">
             Identificador
             <Input
@@ -212,6 +220,23 @@ export default function Equipos() {
                   {c.codigo}
                 </option>
               ))}
+            </Select>
+          </label>
+          <label className="text-sm font-medium text-neutral-700">
+            Cabezal de (opcional)
+            <Select
+              value={form.maquina_base_id}
+              onChange={(e) => setForm({ ...form, maquina_base_id: e.target.value })}
+              className="mt-1.5"
+            >
+              <option value="">No es un cabezal</option>
+              {equipos
+                .filter((eq) => eq.id !== editandoId && !eq.maquina_base_id)
+                .map((eq) => (
+                  <option key={eq.id} value={eq.id}>
+                    {eq.identificador}
+                  </option>
+                ))}
             </Select>
           </label>
 
@@ -287,7 +312,12 @@ export default function Equipos() {
                     </tr>
                     {g.equipos.map((eq) => (
                       <tr key={eq.id} className="border-t border-neutral-100 hover:bg-neutral-50/60">
-                        <td className="px-3 py-1.5 font-medium text-neutral-800">{eq.identificador}</td>
+                        <td className="px-3 py-1.5">
+                          <p className="font-medium text-neutral-800">{eq.identificador}</p>
+                          {eq.maquina_base && (
+                            <p className="text-xs text-neutral-400">cabezal de {eq.maquina_base.identificador}</p>
+                          )}
+                        </td>
                         <td className="px-3 py-1.5">{eq.tipo ?? "—"}</td>
                         <td className="px-3 py-1.5">
                           <Badge tone={TONO_ESTADO[eq.estado]}>{eq.estado}</Badge>

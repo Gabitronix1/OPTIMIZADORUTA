@@ -16,6 +16,7 @@ type Equipo = {
   identificador: string;
   contrato_id: string | null;
   contratos: { codigo: string } | null;
+  maquina_base: { identificador: string } | null;
 };
 
 type ResumenEquipo = {
@@ -65,7 +66,10 @@ export default function Mantenimiento() {
     async function cargar() {
       setCargando(true);
       const [equiposRes, contratosRes, resumenRes] = await Promise.all([
-        supabase.from("equipos").select("id, identificador, contrato_id, contratos(codigo)").order("identificador"),
+        supabase
+          .from("equipos")
+          .select("id, identificador, contrato_id, contratos(codigo), maquina_base:equipos!maquina_base_id(identificador)")
+          .order("identificador"),
         supabase.from("contratos").select("id, codigo").order("codigo"),
         supabase.from("mantenciones_resumen_equipo").select("equipo_id, horometro_actual, total_items, vencidas, proximas"),
       ]);
@@ -249,9 +253,11 @@ export default function Mantenimiento() {
                           <span>
                             <span className="font-medium text-neutral-800">{eq.identificador}</span>
                             <span className="block text-xs text-neutral-400">
-                              {r?.horometro_actual !== null && r?.horometro_actual !== undefined
-                                ? `${r.horometro_actual} hrs · ${r.total_items} ítems`
-                                : "sin horómetro"}
+                              {eq.maquina_base
+                                ? `cabezal de ${eq.maquina_base.identificador} · ${r?.total_items ?? 0} ítems`
+                                : r?.horometro_actual !== null && r?.horometro_actual !== undefined
+                                  ? `${r.horometro_actual} hrs · ${r.total_items} ítems`
+                                  : "sin horómetro"}
                             </span>
                           </span>
                           <span className="flex shrink-0 gap-1.5">
@@ -283,6 +289,12 @@ export default function Mantenimiento() {
                     {equipoActivo?.contratos?.codigo ?? "Sin contrato"} · horómetro{" "}
                     {resumenPorEquipo.get(equipoSeleccionado)?.horometro_actual ?? "—"}
                   </p>
+                  {equipoActivo?.maquina_base && (
+                    <p className="mt-1 text-xs text-pine-700">
+                      Cabezal montado en {equipoActivo.maquina_base.identificador} — usa su horómetro, pero mantiene su propio
+                      plan de mantenimiento e insumos.
+                    </p>
+                  )}
                 </div>
                 {itemsConUrgencia.length === 0 ? (
                   <EmptyState icon={<Wrench className="size-8" />}>Este equipo no tiene plan de mantenimiento cargado.</EmptyState>
