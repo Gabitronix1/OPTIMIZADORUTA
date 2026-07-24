@@ -3,7 +3,23 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { MapContainer, Marker, Polyline, Popup, TileLayer } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import {
+  ArrowLeft,
+  CheckCircle2,
+  Clock3,
+  Gauge,
+  Navigation,
+  Route as RouteIcon,
+  Trash2,
+  TriangleAlert,
+  Truck,
+} from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
+import Card from "../components/ui/Card";
+import Badge from "../components/ui/Badge";
+import Select from "../components/ui/Select";
+import Button from "../components/ui/Button";
+import Spinner from "../components/ui/Spinner";
 
 type Entrega = { id: string; momento_real: string | null; cantidad_entregada: number | null };
 
@@ -89,6 +105,12 @@ function urlGoogleMapsRuta(inicio: [number, number], paradas: [number, number][]
   }
   return `https://www.google.com/maps/dir/?${params.toString()}`;
 }
+
+const TONO_ESTADO_RUTA: Record<string, "success" | "info" | "neutral"> = {
+  completada: "success",
+  en_curso: "info",
+  planificada: "neutral",
+};
 
 export default function RutaDetalle() {
   const { id } = useParams<{ id: string }>();
@@ -191,9 +213,14 @@ export default function RutaDetalle() {
   const entregadas = ruta?.paradas.filter((p) => p.entregas.length > 0).length ?? 0;
   const totalParadas = ruta?.paradas.length ?? 0;
 
-  if (cargando) return <p className="text-sm text-neutral-500">Cargando…</p>;
+  if (cargando) return <Spinner />;
   if (error)
-    return <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>;
+    return (
+      <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <TriangleAlert className="mt-0.5 size-4 shrink-0" />
+        {error}
+      </div>
+    );
   if (!ruta) return <p className="text-sm text-neutral-500">No se encontró la ruta.</p>;
 
   const tieneInicio = ruta.punto_inicio_lat !== null && ruta.punto_inicio_lon !== null;
@@ -204,73 +231,88 @@ export default function RutaDetalle() {
   const geometriaRuta = ruta.geometria && ruta.geometria.length > 0 ? ruta.geometria : null;
 
   return (
-    <div>
-      <Link to="/rutas" className="text-sm text-blue-600 underline">
-        ← Volver a Rutas
+    <div className="space-y-6">
+      <Link to="/rutas" className="inline-flex items-center gap-1.5 text-sm font-medium text-pine-700 hover:underline">
+        <ArrowLeft className="size-4" />
+        Volver a Rutas
       </Link>
 
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">
-            Ruta {ruta.camionetas?.patente ?? "sin camioneta"} · {ruta.fecha}
-          </h1>
-          <p className="mt-1 text-sm text-neutral-600">
-            {entregadas} de {totalParadas} paradas entregadas
-          </p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-start gap-3">
+          <span className="mt-0.5 flex size-10 shrink-0 items-center justify-center rounded-xl bg-pine-800 text-white">
+            <RouteIcon className="size-5" />
+          </span>
+          <div>
+            <h1 className="flex flex-wrap items-center gap-2 text-2xl font-semibold text-neutral-900">
+              Ruta {ruta.camionetas?.patente ?? "sin camioneta"} · {ruta.fecha}
+              <Badge tone={TONO_ESTADO_RUTA[ruta.estado] ?? "neutral"}>{ruta.estado}</Badge>
+            </h1>
+            <p className="mt-1 text-sm text-neutral-500">
+              {entregadas} de {totalParadas} paradas entregadas
+            </p>
+          </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2">
           {tieneInicio && conMapa.length > 0 && (
-            <a
-              href={urlGoogleMapsRuta(
-                [ruta.punto_inicio_lat as number, ruta.punto_inicio_lon as number],
-                conMapa.map((p): [number, number] => [p.lat, p.lon])
-              )}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="rounded-md bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700"
+            <Button
+              icon={<Navigation className="size-4" />}
+              onClick={() =>
+                window.open(
+                  urlGoogleMapsRuta(
+                    [ruta.punto_inicio_lat as number, ruta.punto_inicio_lon as number],
+                    conMapa.map((p): [number, number] => [p.lat, p.lon])
+                  ),
+                  "_blank",
+                  "noopener,noreferrer"
+                )
+              }
             >
               Navegar ruta en Google Maps
-            </a>
+            </Button>
           )}
-          <label className="text-sm text-neutral-700">
-            Estado de la ruta{" "}
-            <select
-              value={ruta.estado}
-              onChange={(e) => cambiarEstadoRuta(e.target.value)}
-              className="ml-1 rounded-md border border-neutral-300 px-3 py-1.5 text-sm"
-            >
-              {ESTADOS_RUTA.map((e) => (
-                <option key={e} value={e}>
-                  {e}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button
-            type="button"
-            onClick={eliminarRuta}
-            disabled={eliminando}
-            className="rounded-md border border-red-200 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 disabled:opacity-50"
-          >
-            {eliminando ? "Eliminando…" : "Eliminar ruta"}
-          </button>
+          <Select value={ruta.estado} onChange={(e) => cambiarEstadoRuta(e.target.value)} className="w-40">
+            {ESTADOS_RUTA.map((e) => (
+              <option key={e} value={e}>
+                {e}
+              </option>
+            ))}
+          </Select>
+          <Button variant="danger" onClick={eliminarRuta} loading={eliminando} icon={<Trash2 className="size-4" />}>
+            Eliminar ruta
+          </Button>
         </div>
       </div>
 
-      <div className="mt-2 flex flex-wrap gap-x-6 gap-y-1 text-sm text-neutral-500">
+      <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm text-neutral-600">
         {ruta.camionetas && (
-          <span>
+          <span className="flex items-center gap-1.5">
+            <Truck className="size-4 text-neutral-400" />
             {ruta.camionetas.tipo ?? "vehículo"} · capacidad {ruta.camionetas.capacidad_carga} kg
           </span>
         )}
-        {ruta.punto_inicio_direccion && <span>Inicio: {ruta.punto_inicio_direccion}</span>}
-        {ruta.hora_salida && <span>Salida: {new Date(ruta.hora_salida).toLocaleString("es-CL")}</span>}
-        {ruta.distancia_total_km !== null && <span>{ruta.distancia_total_km} km totales</span>}
+        {ruta.punto_inicio_direccion && (
+          <span className="flex items-center gap-1.5">
+            <Navigation className="size-4 text-neutral-400" />
+            Inicio: {ruta.punto_inicio_direccion}
+          </span>
+        )}
+        {ruta.hora_salida && (
+          <span className="flex items-center gap-1.5">
+            <Clock3 className="size-4 text-neutral-400" />
+            Salida: {new Date(ruta.hora_salida).toLocaleString("es-CL")}
+          </span>
+        )}
+        {ruta.distancia_total_km !== null && (
+          <span className="flex items-center gap-1.5">
+            <Gauge className="size-4 text-neutral-400" />
+            {ruta.distancia_total_km} km totales
+          </span>
+        )}
         {ruta.duracion_total_min !== null && <span>{formatoDuracion(ruta.duracion_total_min)} de trayecto</span>}
       </div>
 
       {puntosMapa.length > 0 ? (
-        <div className="mt-4 overflow-hidden rounded-lg border border-neutral-200" style={{ height: 420 }}>
+        <Card className="overflow-hidden" style={{ height: 420 }}>
           <MapContainer
             bounds={puntosMapa}
             boundsOptions={{ padding: [30, 30] }}
@@ -331,15 +373,15 @@ export default function RutaDetalle() {
               </Marker>
             ))}
           </MapContainer>
-        </div>
+        </Card>
       ) : (
-        <p className="mt-4 text-sm text-neutral-500">
+        <p className="text-sm text-neutral-500">
           Ninguna parada tiene una ubicación GPS reciente todavía, así que no hay mapa que mostrar.
         </p>
       )}
 
       {ruta.tramos_directos && ruta.tramos_directos.length > 0 && (
-        <p className="mt-2 text-xs text-neutral-500">
+        <p className="text-xs text-neutral-500">
           Línea sólida azul: ruta real por camino. Línea punteada{" "}
           <span className="text-amber-600">naranja</span> o <span className="text-red-600">roja</span>: tramo
           estimado en línea recta porque no hay un camino mapeado hasta ese punto exacto (típico en caminos
@@ -347,16 +389,16 @@ export default function RutaDetalle() {
         </p>
       )}
 
-      <section className="mt-6">
-        <h2 className="text-lg font-medium">Detalle de paradas</h2>
+      <section>
+        <h2 className="text-lg font-medium text-neutral-900">Detalle de paradas</h2>
         <div className="mt-3 space-y-3">
           {paradasOrdenadas.map((parada) => {
             const entregada = parada.entregas.length > 0;
             return (
-              <div key={parada.id} className="rounded-lg border border-neutral-200 bg-white p-4">
+              <Card key={parada.id} className="p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <p className="text-sm font-medium">
+                    <p className="text-sm font-medium text-neutral-900">
                       Parada {parada.orden} ·{" "}
                       {parada.pedidos?.equipos?.identificador ?? parada.pedidos?.faenas?.nombre ?? "—"}
                     </p>
@@ -370,7 +412,8 @@ export default function RutaDetalle() {
                       Horómetro: {parada.pedidos?.equipos?.horometro_actual ?? "—"}
                     </p>
                     {parada.hora_estimada && (
-                      <p className="mt-1 text-xs text-neutral-500">
+                      <p className="mt-1 flex items-center gap-1.5 text-xs text-neutral-500">
+                        <Clock3 className="size-3.5" />
                         Llegada estimada: {new Date(parada.hora_estimada).toLocaleString("es-CL")}
                       </p>
                     )}
@@ -383,31 +426,32 @@ export default function RutaDetalle() {
                           href={urlGoogleMapsPunto(pos.lat, pos.lon)}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-xs text-blue-600 underline"
+                          className="inline-flex items-center gap-1 text-xs font-medium text-pine-700 underline"
                         >
+                          <Navigation className="size-3.5" />
                           Navegar hasta acá
                         </a>
                       ) : null;
                     })()}
                     {entregada ? (
-                      <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-700">
+                      <Badge tone="success" icon={<CheckCircle2 className="size-3.5" />}>
                         Entregado
                         {parada.entregas[0].momento_real &&
                           ` · ${new Date(parada.entregas[0].momento_real).toLocaleString("es-CL")}`}
-                      </span>
+                      </Badge>
                     ) : (
-                      <button
-                        type="button"
+                      <Button
+                        size="sm"
                         onClick={() => confirmarEntrega(parada)}
-                        disabled={confirmando === parada.id}
-                        className="rounded-md bg-neutral-900 px-3 py-1.5 text-xs text-white disabled:opacity-50"
+                        loading={confirmando === parada.id}
+                        icon={<CheckCircle2 className="size-3.5" />}
                       >
-                        {confirmando === parada.id ? "Confirmando…" : "Confirmar entrega"}
-                      </button>
+                        Confirmar entrega
+                      </Button>
                     )}
                   </div>
                 </div>
-              </div>
+              </Card>
             );
           })}
         </div>

@@ -1,5 +1,23 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  CheckCircle2,
+  ClipboardList,
+  PackageSearch,
+  Plus,
+  TriangleAlert,
+  Wrench,
+  X,
+} from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
+import PageHeader from "../components/ui/PageHeader";
+import Card from "../components/ui/Card";
+import Badge from "../components/ui/Badge";
+import SearchInput from "../components/ui/SearchInput";
+import Select from "../components/ui/Select";
+import Input from "../components/ui/Input";
+import Button from "../components/ui/Button";
+import Spinner from "../components/ui/Spinner";
+import EmptyState from "../components/ui/EmptyState";
 
 type Urgencia = "normal" | "alta" | "critica";
 type EstadoPedido = "pendiente" | "planificado" | "entregado" | "cancelado";
@@ -42,6 +60,19 @@ type ProximaMantencion = {
 const URGENCIAS: Urgencia[] = ["normal", "alta", "critica"];
 const ESTADOS: EstadoPedido[] = ["pendiente", "planificado", "entregado", "cancelado"];
 
+const TONO_URGENCIA: Record<Urgencia, "neutral" | "warning" | "danger"> = {
+  normal: "neutral",
+  alta: "warning",
+  critica: "danger",
+};
+
+const TONO_ESTADO: Record<EstadoPedido, "info" | "brand" | "success" | "neutral"> = {
+  pendiente: "info",
+  planificado: "brand",
+  entregado: "success",
+  cancelado: "neutral",
+};
+
 const FORM_VACIO = {
   insumo_id: "",
   destinoTipo: "equipo" as "equipo" | "faena",
@@ -65,6 +96,7 @@ export default function Pedidos() {
   const [stockBajo, setStockBajo] = useState<StockBajo[]>([]);
   const [proximas, setProximas] = useState<ProximaMantencion[]>([]);
   const [filtroEstado, setFiltroEstado] = useState<EstadoPedido | "">("");
+  const [busqueda, setBusqueda] = useState("");
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState(FORM_VACIO);
@@ -179,22 +211,39 @@ export default function Pedidos() {
     cargarPedidos(filtroEstado);
   }
 
+  const pedidosFiltrados = useMemo(() => {
+    const texto = busqueda.trim().toLowerCase();
+    if (!texto) return pedidos;
+    return pedidos.filter(
+      (p) =>
+        (p.insumos?.nombre ?? "").toLowerCase().includes(texto) ||
+        (p.equipos?.identificador ?? "").toLowerCase().includes(texto) ||
+        (p.faenas?.nombre ?? "").toLowerCase().includes(texto)
+    );
+  }, [pedidos, busqueda]);
+
   return (
-    <div>
-      <h1 className="text-2xl font-semibold">Pedidos</h1>
-      <p className="mt-2 text-neutral-600">
-        Solicitudes de insumos para equipos o faenas. Desde acá se arman las rutas de reparto en la pestaña
-        Rutas.
-      </p>
+    <div className="space-y-8">
+      <PageHeader
+        icon={<ClipboardList className="size-5" />}
+        title="Pedidos"
+        description="Solicitudes de insumos para equipos o faenas. Desde acá se arman las rutas de reparto en la pestaña Rutas."
+      />
 
       {error && (
-        <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+        <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <TriangleAlert className="mt-0.5 size-4 shrink-0" />
+          {error}
+        </div>
       )}
 
       {stockBajo.length > 0 && (
-        <section className="mt-6">
-          <h2 className="text-lg font-medium">Sugeridos por stock bajo</h2>
-          <div className="mt-3 overflow-auto rounded-lg border border-neutral-200">
+        <section>
+          <h2 className="flex items-center gap-2 text-lg font-medium text-neutral-900">
+            <PackageSearch className="size-4.5 text-amber-600" />
+            Sugeridos por stock bajo
+          </h2>
+          <Card className="mt-3 overflow-auto">
             <table className="w-full text-left text-sm">
               <thead className="bg-neutral-50 text-neutral-600">
                 <tr>
@@ -206,29 +255,32 @@ export default function Pedidos() {
               </thead>
               <tbody>
                 {stockBajo.map((s) => (
-                  <tr key={s.insumo_id} className="border-t border-neutral-100">
-                    <td className="px-3 py-1.5">{s.nombre}</td>
+                  <tr key={s.insumo_id} className="border-t border-neutral-100 hover:bg-neutral-50/60">
+                    <td className="px-3 py-1.5 font-medium text-neutral-800">{s.nombre}</td>
                     <td className="px-3 py-1.5 text-amber-700">
                       {s.stock_total} {s.unidad_medida}
                     </td>
-                    <td className="px-3 py-1.5">{s.stock_minimo}</td>
+                    <td className="px-3 py-1.5 tabular-nums">{s.stock_minimo}</td>
                     <td className="px-3 py-1.5 text-right">
-                      <button type="button" onClick={() => crearDesdeStockBajo(s)} className="text-blue-600 underline">
+                      <Button variant="ghost" size="sm" icon={<Plus className="size-3.5" />} onClick={() => crearDesdeStockBajo(s)}>
                         Crear pedido
-                      </button>
+                      </Button>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
+          </Card>
         </section>
       )}
 
       {proximas.length > 0 && (
-        <section className="mt-6">
-          <h2 className="text-lg font-medium">Sugeridos por mantención próxima</h2>
-          <div className="mt-3 overflow-auto rounded-lg border border-neutral-200">
+        <section>
+          <h2 className="flex items-center gap-2 text-lg font-medium text-neutral-900">
+            <Wrench className="size-4.5 text-pine-700" />
+            Sugeridos por mantención próxima
+          </h2>
+          <Card className="mt-3 overflow-auto">
             <table className="w-full text-left text-sm">
               <thead className="bg-neutral-50 text-neutral-600">
                 <tr>
@@ -240,17 +292,19 @@ export default function Pedidos() {
               </thead>
               <tbody>
                 {proximas.map((p) => (
-                  <tr key={p.plan_item_id} className="border-t border-neutral-100">
-                    <td className="px-3 py-1.5">{p.identificador}</td>
+                  <tr key={p.plan_item_id} className="border-t border-neutral-100 hover:bg-neutral-50/60">
+                    <td className="px-3 py-1.5 font-medium text-neutral-800">{p.identificador}</td>
                     <td className="px-3 py-1.5">{p.descripcion}</td>
-                    <td className={`px-3 py-1.5 ${p.horas_restantes <= 0 ? "text-red-700" : "text-amber-700"}`}>
-                      {p.horas_restantes <= 0 ? `Vencido (${Math.abs(p.horas_restantes)} hrs)` : `${p.horas_restantes} hrs`}
+                    <td className="px-3 py-1.5">
+                      <Badge tone={p.horas_restantes <= 0 ? "danger" : "warning"}>
+                        {p.horas_restantes <= 0 ? `Vencido (${Math.abs(p.horas_restantes)} hrs)` : `${p.horas_restantes} hrs`}
+                      </Badge>
                     </td>
                     <td className="px-3 py-1.5 text-right">
                       {p.insumo_id ? (
-                        <button type="button" onClick={() => crearDesdeMantencion(p)} className="text-blue-600 underline">
+                        <Button variant="ghost" size="sm" icon={<Plus className="size-3.5" />} onClick={() => crearDesdeMantencion(p)}>
                           Crear pedido
-                        </button>
+                        </Button>
                       ) : (
                         <span className="text-xs text-neutral-400">sin insumo vinculado</span>
                       )}
@@ -259,189 +313,168 @@ export default function Pedidos() {
                 ))}
               </tbody>
             </table>
-          </div>
+          </Card>
         </section>
       )}
 
-      <section className="mt-8">
-        <h2 className="text-lg font-medium">Nuevo pedido</h2>
-        <form
-          onSubmit={onSubmit}
-          className="mt-3 grid max-w-3xl grid-cols-2 gap-4 rounded-lg border border-neutral-200 bg-white p-4 sm:grid-cols-4"
-        >
-          <label className="text-sm text-neutral-700">
-            Insumo
-            <select
-              required
-              value={form.insumo_id}
-              onChange={(e) => setForm({ ...form, insumo_id: e.target.value })}
-              className="mt-1 w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
-            >
-              <option value="">Selecciona…</option>
-              {insumos.map((i) => (
-                <option key={i.id} value={i.id}>
-                  {i.nombre}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-sm text-neutral-700">
-            Destino
-            <select
-              value={form.destinoTipo}
-              onChange={(e) => setForm({ ...form, destinoTipo: e.target.value as "equipo" | "faena" })}
-              className="mt-1 w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
-            >
-              <option value="equipo">Equipo</option>
-              <option value="faena">Faena</option>
-            </select>
-          </label>
-          {form.destinoTipo === "equipo" ? (
-            <label className="text-sm text-neutral-700">
-              Equipo
-              <select
-                required
-                value={form.equipo_id}
-                onChange={(e) => setForm({ ...form, equipo_id: e.target.value })}
-                className="mt-1 w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
-              >
+      <section>
+        <h2 className="text-lg font-medium text-neutral-900">Nuevo pedido</h2>
+        <Card className="mt-3 p-4">
+          <form onSubmit={onSubmit} className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <label className="text-sm font-medium text-neutral-700">
+              Insumo
+              <Select required value={form.insumo_id} onChange={(e) => setForm({ ...form, insumo_id: e.target.value })} className="mt-1.5">
                 <option value="">Selecciona…</option>
-                {equipos.map((eq) => (
-                  <option key={eq.id} value={eq.id}>
-                    {eq.identificador}
+                {insumos.map((i) => (
+                  <option key={i.id} value={i.id}>
+                    {i.nombre}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
-          ) : (
-            <label className="text-sm text-neutral-700">
-              Faena
-              <select
-                required
-                value={form.faena_id}
-                onChange={(e) => setForm({ ...form, faena_id: e.target.value })}
-                className="mt-1 w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
+            <label className="text-sm font-medium text-neutral-700">
+              Destino
+              <Select
+                value={form.destinoTipo}
+                onChange={(e) => setForm({ ...form, destinoTipo: e.target.value as "equipo" | "faena" })}
+                className="mt-1.5"
               >
-                <option value="">Selecciona…</option>
-                {faenas.map((f) => (
-                  <option key={f.id} value={f.id}>
-                    {f.nombre}
+                <option value="equipo">Equipo</option>
+                <option value="faena">Faena</option>
+              </Select>
+            </label>
+            {form.destinoTipo === "equipo" ? (
+              <label className="text-sm font-medium text-neutral-700">
+                Equipo
+                <Select required value={form.equipo_id} onChange={(e) => setForm({ ...form, equipo_id: e.target.value })} className="mt-1.5">
+                  <option value="">Selecciona…</option>
+                  {equipos.map((eq) => (
+                    <option key={eq.id} value={eq.id}>
+                      {eq.identificador}
+                    </option>
+                  ))}
+                </Select>
+              </label>
+            ) : (
+              <label className="text-sm font-medium text-neutral-700">
+                Faena
+                <Select required value={form.faena_id} onChange={(e) => setForm({ ...form, faena_id: e.target.value })} className="mt-1.5">
+                  <option value="">Selecciona…</option>
+                  {faenas.map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.nombre}
+                    </option>
+                  ))}
+                </Select>
+              </label>
+            )}
+            <label className="text-sm font-medium text-neutral-700">
+              Cantidad
+              <Input
+                type="number"
+                min="0"
+                step="any"
+                required
+                value={form.cantidad}
+                onChange={(e) => setForm({ ...form, cantidad: e.target.value })}
+                className="mt-1.5"
+              />
+            </label>
+            <label className="text-sm font-medium text-neutral-700">
+              Urgencia
+              <Select value={form.urgencia} onChange={(e) => setForm({ ...form, urgencia: e.target.value as Urgencia })} className="mt-1.5">
+                {URGENCIAS.map((u) => (
+                  <option key={u} value={u}>
+                    {u}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
-          )}
-          <label className="text-sm text-neutral-700">
-            Cantidad
-            <input
-              type="number"
-              min="0"
-              step="any"
-              required
-              value={form.cantidad}
-              onChange={(e) => setForm({ ...form, cantidad: e.target.value })}
-              className="mt-1 w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
-            />
-          </label>
-          <label className="text-sm text-neutral-700">
-            Urgencia
-            <select
-              value={form.urgencia}
-              onChange={(e) => setForm({ ...form, urgencia: e.target.value as Urgencia })}
-              className="mt-1 w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
-            >
-              {URGENCIAS.map((u) => (
-                <option key={u} value={u}>
-                  {u}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className="col-span-2 flex items-end sm:col-span-4">
-            <button
-              type="submit"
-              disabled={guardando}
-              className="rounded-md bg-neutral-900 px-4 py-2 text-sm text-white disabled:opacity-50"
-            >
-              {guardando ? "Guardando…" : "Crear pedido"}
-            </button>
-          </div>
-        </form>
+            <div className="col-span-full flex items-end">
+              <Button type="submit" loading={guardando} icon={<Plus className="size-4" />}>
+                Crear pedido
+              </Button>
+            </div>
+          </form>
+        </Card>
       </section>
 
-      <section className="mt-8">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-medium">Todos los pedidos</h2>
-          <select
-            value={filtroEstado}
-            onChange={(e) => setFiltroEstado(e.target.value as EstadoPedido | "")}
-            className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm"
-          >
-            <option value="">Todos los estados</option>
-            {ESTADOS.map((e) => (
-              <option key={e} value={e}>
-                {e}
-              </option>
-            ))}
-          </select>
+      <section>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-medium text-neutral-900">Todos los pedidos</h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <SearchInput value={busqueda} onChange={setBusqueda} placeholder="Buscar por insumo o destino…" className="w-64" />
+            <Select value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value as EstadoPedido | "")} className="w-48">
+              <option value="">Todos los estados</option>
+              {ESTADOS.map((e) => (
+                <option key={e} value={e}>
+                  {e}
+                </option>
+              ))}
+            </Select>
+          </div>
         </div>
-        <div className="mt-3 overflow-auto rounded-lg border border-neutral-200">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-neutral-50 text-neutral-600">
-              <tr>
-                <th className="px-3 py-2 font-medium">Insumo</th>
-                <th className="px-3 py-2 font-medium">Destino</th>
-                <th className="px-3 py-2 font-medium">Cantidad</th>
-                <th className="px-3 py-2 font-medium">Urgencia</th>
-                <th className="px-3 py-2 font-medium">Estado</th>
-                <th className="px-3 py-2 font-medium">Fecha</th>
-                <th className="px-3 py-2 font-medium"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {cargando ? (
+        {cargando ? (
+          <Spinner />
+        ) : pedidosFiltrados.length === 0 ? (
+          <EmptyState icon={<ClipboardList className="size-8" />}>No hay pedidos que coincidan.</EmptyState>
+        ) : (
+          <Card className="mt-3 overflow-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-neutral-50 text-neutral-600">
                 <tr>
-                  <td colSpan={7} className="px-3 py-4 text-center text-neutral-500">
-                    Cargando…
-                  </td>
+                  <th className="px-3 py-2 font-medium">Insumo</th>
+                  <th className="px-3 py-2 font-medium">Destino</th>
+                  <th className="px-3 py-2 font-medium">Cantidad</th>
+                  <th className="px-3 py-2 font-medium">Urgencia</th>
+                  <th className="px-3 py-2 font-medium">Estado</th>
+                  <th className="px-3 py-2 font-medium">Fecha</th>
+                  <th className="px-3 py-2 font-medium"></th>
                 </tr>
-              ) : pedidos.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-3 py-4 text-center text-neutral-500">
-                    No hay pedidos.
-                  </td>
-                </tr>
-              ) : (
-                pedidos.map((p) => (
-                  <tr key={p.id} className="border-t border-neutral-100">
-                    <td className="px-3 py-1.5">{p.insumos?.nombre ?? "—"}</td>
+              </thead>
+              <tbody>
+                {pedidosFiltrados.map((p) => (
+                  <tr key={p.id} className="border-t border-neutral-100 hover:bg-neutral-50/60">
+                    <td className="px-3 py-1.5 font-medium text-neutral-800">{p.insumos?.nombre ?? "—"}</td>
                     <td className="px-3 py-1.5">{p.equipos?.identificador ?? p.faenas?.nombre ?? "—"}</td>
-                    <td className="px-3 py-1.5">{p.cantidad}</td>
-                    <td className="px-3 py-1.5">{p.urgencia}</td>
-                    <td className="px-3 py-1.5">{p.estado}</td>
+                    <td className="px-3 py-1.5 tabular-nums">{p.cantidad}</td>
+                    <td className="px-3 py-1.5">
+                      <Badge tone={TONO_URGENCIA[p.urgencia]}>{p.urgencia}</Badge>
+                    </td>
+                    <td className="px-3 py-1.5">
+                      <Badge tone={TONO_ESTADO[p.estado]}>{p.estado}</Badge>
+                    </td>
                     <td className="px-3 py-1.5">{new Date(p.creado_at).toLocaleDateString("es-CL")}</td>
                     <td className="px-3 py-1.5 text-right">
                       {p.estado === "pendiente" && (
-                        <button type="button" onClick={() => cambiarEstado(p.id, "cancelado")} className="text-red-600 underline">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          icon={<X className="size-3.5" />}
+                          onClick={() => cambiarEstado(p.id, "cancelado")}
+                          className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                        >
                           Cancelar
-                        </button>
+                        </Button>
                       )}
                       {p.estado === "planificado" && (
-                        <button
-                          type="button"
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          icon={<CheckCircle2 className="size-3.5" />}
                           onClick={() => cambiarEstado(p.id, "entregado")}
-                          className="text-green-700 underline"
+                          className="text-pine-700 hover:bg-pine-50"
                         >
                           Marcar entregado
-                        </button>
+                        </Button>
                       )}
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                ))}
+              </tbody>
+            </table>
+          </Card>
+        )}
       </section>
     </div>
   );

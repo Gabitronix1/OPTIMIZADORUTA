@@ -1,5 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { Tractor, TriangleAlert, Wrench } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
+import PageHeader from "../components/ui/PageHeader";
+import Card from "../components/ui/Card";
+import Badge from "../components/ui/Badge";
+import SearchInput from "../components/ui/SearchInput";
+import Select from "../components/ui/Select";
+import Spinner from "../components/ui/Spinner";
+import EmptyState from "../components/ui/EmptyState";
 
 type Equipo = { id: string; identificador: string };
 
@@ -24,6 +32,12 @@ type ProximaMantencion = {
   cantidad_texto: string | null;
 };
 
+function badgeUrgencia(horas: number) {
+  if (horas <= 0) return <Badge tone="danger">Vencido ({Math.abs(horas)} hrs)</Badge>;
+  if (horas <= 50) return <Badge tone="warning">{horas} hrs</Badge>;
+  return <Badge tone="neutral">{horas} hrs</Badge>;
+}
+
 export default function Mantenimiento() {
   const [equipos, setEquipos] = useState<Equipo[]>([]);
   const [equipoId, setEquipoId] = useState("");
@@ -31,6 +45,7 @@ export default function Mantenimiento() {
   const [proximas, setProximas] = useState<ProximaMantencion[]>([]);
   const [cargandoItems, setCargandoItems] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [busqueda, setBusqueda] = useState("");
 
   useEffect(() => {
     supabase
@@ -76,29 +91,46 @@ export default function Mantenimiento() {
       });
   }, [equipoId]);
 
+  const proximasFiltradas = useMemo(() => {
+    const texto = busqueda.trim().toLowerCase();
+    if (!texto) return proximas;
+    return proximas.filter(
+      (p) => p.identificador.toLowerCase().includes(texto) || p.descripcion.toLowerCase().includes(texto)
+    );
+  }, [proximas, busqueda]);
+
   return (
-    <div>
-      <h1 className="text-2xl font-semibold">Plan de mantenimiento</h1>
-      <p className="mt-2 text-neutral-600">
-        Plan preventivo por equipo y qué mantenciones están próximas según el último horómetro registrado.
-      </p>
+    <div className="space-y-8">
+      <PageHeader
+        icon={<Wrench className="size-5" />}
+        title="Plan de mantenimiento"
+        description="Plan preventivo por equipo y qué mantenciones están próximas según el último horómetro registrado."
+      />
 
       {error && (
-        <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+        <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <TriangleAlert className="mt-0.5 size-4 shrink-0" />
+          {error}
+        </div>
       )}
 
-      <section className="mt-6">
-        <h2 className="text-lg font-medium">Próximas mantenciones</h2>
+      <section>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-medium text-neutral-900">Próximas mantenciones</h2>
+          {proximas.length > 0 && (
+            <SearchInput value={busqueda} onChange={setBusqueda} placeholder="Filtrar por equipo o componente…" className="w-72" />
+          )}
+        </div>
         {proximas.length === 0 ? (
-          <p className="mt-2 text-sm text-neutral-500">
+          <EmptyState icon={<Wrench className="size-8" />}>
             Aún no hay lecturas de horómetro cargadas. Sube el archivo de ubicaciones del dealer en{" "}
-            <a href="/ubicaciones" className="text-blue-600 underline">
+            <a href="/ubicaciones" className="font-medium text-pine-700 underline">
               Ubicaciones
             </a>{" "}
             para poder calcular qué mantenciones están próximas.
-          </p>
+          </EmptyState>
         ) : (
-          <div className="mt-3 max-h-96 overflow-auto rounded-lg border border-neutral-200">
+          <Card className="mt-3 max-h-96 overflow-auto">
             <table className="w-full text-left text-sm">
               <thead className="sticky top-0 bg-neutral-50 text-neutral-600">
                 <tr>
@@ -111,38 +143,29 @@ export default function Mantenimiento() {
                 </tr>
               </thead>
               <tbody>
-                {proximas.map((p) => (
-                  <tr key={p.plan_item_id} className="border-t border-neutral-100">
-                    <td className="px-3 py-1.5">{p.identificador}</td>
+                {proximasFiltradas.map((p) => (
+                  <tr key={p.plan_item_id} className="border-t border-neutral-100 hover:bg-neutral-50/60">
+                    <td className="px-3 py-1.5 font-medium text-neutral-800">{p.identificador}</td>
                     <td className="px-3 py-1.5">{p.accion}</td>
                     <td className="px-3 py-1.5">{p.descripcion}</td>
-                    <td className="px-3 py-1.5">{p.horometro_actual}</td>
-                    <td className="px-3 py-1.5">{p.proxima_hora}</td>
-                    <td
-                      className={`px-3 py-1.5 font-medium ${
-                        p.horas_restantes <= 0
-                          ? "text-red-700"
-                          : p.horas_restantes <= 50
-                            ? "text-amber-700"
-                            : "text-neutral-700"
-                      }`}
-                    >
-                      {p.horas_restantes <= 0 ? `Vencido (${Math.abs(p.horas_restantes)} hrs)` : `${p.horas_restantes} hrs`}
-                    </td>
+                    <td className="px-3 py-1.5 tabular-nums">{p.horometro_actual}</td>
+                    <td className="px-3 py-1.5 tabular-nums">{p.proxima_hora}</td>
+                    <td className="px-3 py-1.5">{badgeUrgencia(p.horas_restantes)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
+          </Card>
         )}
       </section>
 
-      <section className="mt-8">
-        <h2 className="text-lg font-medium">Plan completo por equipo</h2>
-        <select
+      <section>
+        <h2 className="text-lg font-medium text-neutral-900">Plan completo por equipo</h2>
+        <Select
           value={equipoId}
           onChange={(e) => setEquipoId(e.target.value)}
-          className="mt-3 rounded-md border border-neutral-300 px-3 py-2 text-sm"
+          icon={<Tractor className="size-4" />}
+          className="mt-3 max-w-xs"
         >
           <option value="">Selecciona un equipo…</option>
           {equipos.map((eq) => (
@@ -150,12 +173,12 @@ export default function Mantenimiento() {
               {eq.identificador}
             </option>
           ))}
-        </select>
+        </Select>
 
-        {cargandoItems && <p className="mt-3 text-sm text-neutral-500">Cargando…</p>}
+        {cargandoItems && <Spinner />}
 
         {!cargandoItems && equipoId && (
-          <div className="mt-3 max-h-96 overflow-auto rounded-lg border border-neutral-200">
+          <Card className="mt-3 max-h-96 overflow-auto">
             <table className="w-full text-left text-sm">
               <thead className="sticky top-0 bg-neutral-50 text-neutral-600">
                 <tr>
@@ -168,17 +191,17 @@ export default function Mantenimiento() {
               </thead>
               <tbody>
                 {items.map((it) => (
-                  <tr key={it.id} className="border-t border-neutral-100">
+                  <tr key={it.id} className="border-t border-neutral-100 hover:bg-neutral-50/60">
                     <td className="px-3 py-1.5">{it.accion}</td>
                     <td className="px-3 py-1.5">{it.descripcion}</td>
                     <td className="px-3 py-1.5">{it.insumos?.codigo_pieza ?? "—"}</td>
                     <td className="px-3 py-1.5">{it.cantidad_texto ?? "—"}</td>
-                    <td className="px-3 py-1.5">{it.frecuencia_horas}</td>
+                    <td className="px-3 py-1.5 tabular-nums">{it.frecuencia_horas}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
+          </Card>
         )}
       </section>
     </div>

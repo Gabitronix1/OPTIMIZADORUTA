@@ -1,5 +1,15 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { Pencil, Plus, Save, Tractor, TriangleAlert, X } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
+import PageHeader from "../components/ui/PageHeader";
+import Card from "../components/ui/Card";
+import Badge from "../components/ui/Badge";
+import SearchInput from "../components/ui/SearchInput";
+import Input from "../components/ui/Input";
+import Select from "../components/ui/Select";
+import Button from "../components/ui/Button";
+import Spinner from "../components/ui/Spinner";
+import EmptyState from "../components/ui/EmptyState";
 
 type Estado = "operativo" | "mantencion" | "traslado" | "detenido";
 
@@ -18,6 +28,13 @@ type Equipo = {
 
 const ESTADOS: Estado[] = ["operativo", "mantencion", "traslado", "detenido"];
 
+const TONO_ESTADO: Record<Estado, "success" | "warning" | "info" | "danger"> = {
+  operativo: "success",
+  mantencion: "warning",
+  traslado: "info",
+  detenido: "danger",
+};
+
 const FORM_VACIO = {
   identificador: "",
   tipo: "",
@@ -33,6 +50,7 @@ export default function Equipos() {
   const [form, setForm] = useState(FORM_VACIO);
   const [editandoId, setEditandoId] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
+  const [busqueda, setBusqueda] = useState("");
 
   async function cargarEquipos() {
     setCargando(true);
@@ -104,139 +122,157 @@ export default function Equipos() {
     cargarEquipos();
   }
 
+  const equiposFiltrados = useMemo(() => {
+    const texto = busqueda.trim().toLowerCase();
+    if (!texto) return equipos;
+    return equipos.filter(
+      (eq) =>
+        eq.identificador.toLowerCase().includes(texto) ||
+        (eq.tipo ?? "").toLowerCase().includes(texto) ||
+        (eq.contratos?.codigo ?? "").toLowerCase().includes(texto)
+    );
+  }, [equipos, busqueda]);
+
   return (
-    <div>
-      <h1 className="text-2xl font-semibold">Equipos</h1>
-      <p className="mt-2 text-neutral-600">
-        Maquinaria de la flota forestal. El horómetro se actualiza automáticamente al subir datos en
-        Ubicaciones o Producción, así que no es editable aquí.
-      </p>
+    <div className="space-y-6">
+      <PageHeader
+        icon={<Tractor className="size-5" />}
+        title="Equipos"
+        description="Maquinaria de la flota forestal. El horómetro se actualiza automáticamente al subir datos en Ubicaciones o Producción, así que no es editable aquí."
+      />
 
       {error && (
-        <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+        <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <TriangleAlert className="mt-0.5 size-4 shrink-0" />
+          {error}
+        </div>
       )}
 
-      <form
-        onSubmit={onSubmit}
-        className="mt-6 grid max-w-3xl grid-cols-2 gap-4 rounded-lg border border-neutral-200 bg-white p-4 sm:grid-cols-4"
-      >
-        <label className="text-sm text-neutral-700">
-          Identificador
-          <input
-            type="text"
-            required
-            disabled={!!editandoId}
-            value={form.identificador}
-            onChange={(e) => setForm({ ...form, identificador: e.target.value })}
-            className="mt-1 w-full rounded-md border border-neutral-300 px-3 py-2 text-sm disabled:bg-neutral-100 disabled:text-neutral-500"
-          />
-        </label>
-        <label className="text-sm text-neutral-700">
-          Tipo
-          <input
-            type="text"
-            placeholder="procesador, skidder…"
-            value={form.tipo}
-            onChange={(e) => setForm({ ...form, tipo: e.target.value })}
-            className="mt-1 w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
-          />
-        </label>
-        <label className="text-sm text-neutral-700">
-          Estado
-          <select
-            value={form.estado}
-            onChange={(e) => setForm({ ...form, estado: e.target.value as Estado })}
-            className="mt-1 w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
-          >
-            {ESTADOS.map((estado) => (
-              <option key={estado} value={estado}>
-                {estado}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="text-sm text-neutral-700">
-          Contrato
-          <select
-            value={form.contrato_id}
-            onChange={(e) => setForm({ ...form, contrato_id: e.target.value })}
-            className="mt-1 w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
-          >
-            <option value="">Sin contrato</option>
-            {contratos.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.codigo}
-              </option>
-            ))}
-          </select>
-        </label>
+      <Card className="p-4">
+        <form onSubmit={onSubmit} className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <label className="text-sm font-medium text-neutral-700">
+            Identificador
+            <Input
+              type="text"
+              required
+              disabled={!!editandoId}
+              value={form.identificador}
+              onChange={(e) => setForm({ ...form, identificador: e.target.value })}
+              className="mt-1.5"
+            />
+          </label>
+          <label className="text-sm font-medium text-neutral-700">
+            Tipo
+            <Input
+              type="text"
+              placeholder="procesador, skidder…"
+              value={form.tipo}
+              onChange={(e) => setForm({ ...form, tipo: e.target.value })}
+              className="mt-1.5"
+            />
+          </label>
+          <label className="text-sm font-medium text-neutral-700">
+            Estado
+            <Select
+              value={form.estado}
+              onChange={(e) => setForm({ ...form, estado: e.target.value as Estado })}
+              className="mt-1.5"
+            >
+              {ESTADOS.map((estado) => (
+                <option key={estado} value={estado}>
+                  {estado}
+                </option>
+              ))}
+            </Select>
+          </label>
+          <label className="text-sm font-medium text-neutral-700">
+            Contrato
+            <Select
+              value={form.contrato_id}
+              onChange={(e) => setForm({ ...form, contrato_id: e.target.value })}
+              className="mt-1.5"
+            >
+              <option value="">Sin contrato</option>
+              {contratos.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.codigo}
+                </option>
+              ))}
+            </Select>
+          </label>
 
-        <div className="col-span-2 flex items-end gap-3 sm:col-span-4">
-          <button
-            type="submit"
-            disabled={guardando}
-            className="rounded-md bg-neutral-900 px-4 py-2 text-sm text-white disabled:opacity-50"
-          >
-            {guardando ? "Guardando…" : editandoId ? "Guardar cambios" : "Agregar equipo"}
-          </button>
-          {editandoId && (
-            <button type="button" onClick={cancelarEdicion} className="text-sm text-neutral-500 underline">
-              Cancelar edición
-            </button>
-          )}
-        </div>
-      </form>
+          <div className="col-span-full flex items-center gap-3">
+            <Button type="submit" loading={guardando} icon={editandoId ? <Save className="size-4" /> : <Plus className="size-4" />}>
+              {editandoId ? "Guardar cambios" : "Agregar equipo"}
+            </Button>
+            {editandoId && (
+              <Button type="button" variant="secondary" onClick={cancelarEdicion} icon={<X className="size-4" />}>
+                Cancelar edición
+              </Button>
+            )}
+          </div>
+        </form>
+      </Card>
 
-      <div className="mt-6 overflow-auto rounded-lg border border-neutral-200">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-neutral-50 text-neutral-600">
-            <tr>
-              <th className="px-3 py-2 font-medium">Identificador</th>
-              <th className="px-3 py-2 font-medium">Tipo</th>
-              <th className="px-3 py-2 font-medium">Estado</th>
-              <th className="px-3 py-2 font-medium">Contrato</th>
-              <th className="px-3 py-2 font-medium">Horómetro actual</th>
-              <th className="px-3 py-2 font-medium">Actualizado</th>
-              <th className="px-3 py-2 font-medium"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {cargando ? (
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-lg font-medium text-neutral-900">Listado</h2>
+        {equipos.length > 0 && (
+          <SearchInput value={busqueda} onChange={setBusqueda} placeholder="Buscar por identificador, tipo o contrato…" className="w-80" />
+        )}
+      </div>
+
+      {cargando ? (
+        <Spinner />
+      ) : equipos.length === 0 ? (
+        <EmptyState icon={<Tractor className="size-8" />}>Aún no hay equipos registrados.</EmptyState>
+      ) : (
+        <Card className="overflow-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-neutral-50 text-neutral-600">
               <tr>
-                <td colSpan={7} className="px-3 py-4 text-center text-neutral-500">
-                  Cargando…
-                </td>
+                <th className="px-3 py-2 font-medium">Identificador</th>
+                <th className="px-3 py-2 font-medium">Tipo</th>
+                <th className="px-3 py-2 font-medium">Estado</th>
+                <th className="px-3 py-2 font-medium">Contrato</th>
+                <th className="px-3 py-2 font-medium">Horómetro actual</th>
+                <th className="px-3 py-2 font-medium">Actualizado</th>
+                <th className="px-3 py-2 font-medium"></th>
               </tr>
-            ) : equipos.length === 0 ? (
-              <tr>
-                <td colSpan={7} className="px-3 py-4 text-center text-neutral-500">
-                  Aún no hay equipos registrados.
-                </td>
-              </tr>
-            ) : (
-              equipos.map((eq) => (
-                <tr key={eq.id} className="border-t border-neutral-100">
-                  <td className="px-3 py-1.5">{eq.identificador}</td>
-                  <td className="px-3 py-1.5">{eq.tipo ?? "—"}</td>
-                  <td className="px-3 py-1.5">{eq.estado}</td>
-                  <td className="px-3 py-1.5">{eq.contratos?.codigo ?? "—"}</td>
-                  <td className="px-3 py-1.5">{eq.horometro_actual ?? "—"}</td>
-                  <td className="px-3 py-1.5">
-                    {eq.horometro_actualizado_at
-                      ? new Date(eq.horometro_actualizado_at).toLocaleDateString("es-CL")
-                      : "—"}
-                  </td>
-                  <td className="px-3 py-1.5 text-right">
-                    <button type="button" onClick={() => editar(eq)} className="text-blue-600 underline">
-                      Editar
-                    </button>
+            </thead>
+            <tbody>
+              {equiposFiltrados.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-3 py-4 text-center text-neutral-500">
+                    Ningún equipo coincide con la búsqueda.
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+              ) : (
+                equiposFiltrados.map((eq) => (
+                  <tr key={eq.id} className="border-t border-neutral-100 hover:bg-neutral-50/60">
+                    <td className="px-3 py-1.5 font-medium text-neutral-800">{eq.identificador}</td>
+                    <td className="px-3 py-1.5">{eq.tipo ?? "—"}</td>
+                    <td className="px-3 py-1.5">
+                      <Badge tone={TONO_ESTADO[eq.estado]}>{eq.estado}</Badge>
+                    </td>
+                    <td className="px-3 py-1.5">{eq.contratos?.codigo ?? "—"}</td>
+                    <td className="px-3 py-1.5 tabular-nums">{eq.horometro_actual ?? "—"}</td>
+                    <td className="px-3 py-1.5">
+                      {eq.horometro_actualizado_at
+                        ? new Date(eq.horometro_actualizado_at).toLocaleDateString("es-CL")
+                        : "—"}
+                    </td>
+                    <td className="px-3 py-1.5 text-right">
+                      <Button variant="ghost" size="sm" onClick={() => editar(eq)} icon={<Pencil className="size-3.5" />}>
+                        Editar
+                      </Button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </Card>
+      )}
     </div>
   );
 }

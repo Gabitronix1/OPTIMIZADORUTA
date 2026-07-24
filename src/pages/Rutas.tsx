@@ -1,9 +1,27 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Marker, MapContainer, TileLayer, useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import {
+  Clock,
+  MapPin,
+  Route as RouteIcon,
+  Sparkles,
+  Trash2,
+  TriangleAlert,
+  Truck,
+} from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
+import PageHeader from "../components/ui/PageHeader";
+import Card from "../components/ui/Card";
+import Badge from "../components/ui/Badge";
+import Select from "../components/ui/Select";
+import Input from "../components/ui/Input";
+import Button from "../components/ui/Button";
+import Spinner from "../components/ui/Spinner";
+import EmptyState from "../components/ui/EmptyState";
+import SearchInput from "../components/ui/SearchInput";
 
 /** supabase-js no expone el cuerpo JSON de un error de Edge Function; hay que leerlo del Response crudo. */
 async function mensajeErrorFuncion(error: unknown): Promise<string> {
@@ -100,6 +118,7 @@ export default function Rutas() {
   const [seleccionados, setSeleccionados] = useState<Set<string>>(new Set());
   const [creando, setCreando] = useState(false);
   const [eliminandoId, setEliminandoId] = useState<string | null>(null);
+  const [busquedaRutas, setBusquedaRutas] = useState("");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   async function cargarTodo() {
@@ -277,35 +296,46 @@ export default function Rutas() {
     cargarTodo();
   }
 
+  const rutasFiltradas = useMemo(() => {
+    const texto = busquedaRutas.trim().toLowerCase();
+    if (!texto) return rutas;
+    return rutas.filter(
+      (r) => (r.camionetas?.patente ?? "").toLowerCase().includes(texto) || r.estado.toLowerCase().includes(texto)
+    );
+  }, [rutas, busquedaRutas]);
+
   return (
-    <div>
-      <h1 className="text-2xl font-semibold">Rutas de reparto</h1>
-      <p className="mt-2 text-neutral-600">
-        Arma una ruta eligiendo un punto de inicio, una camioneta y los pedidos pendientes a repartir. El
-        orden de las paradas y los tiempos se calculan con la ruta real por caminos (OpenRouteService), no
-        en línea recta.
-      </p>
+    <div className="space-y-8">
+      <PageHeader
+        icon={<RouteIcon className="size-5" />}
+        title="Rutas de reparto"
+        description="Arma una ruta eligiendo un punto de inicio, una camioneta y los pedidos pendientes a repartir. El orden de las paradas y los tiempos se calculan con la ruta real por caminos (OpenRouteService), no en línea recta."
+      />
 
       {error && (
-        <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+        <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <TriangleAlert className="mt-0.5 size-4 shrink-0" />
+          {error}
+        </div>
       )}
 
-      <section className="mt-6">
-        <h2 className="text-lg font-medium">Nueva ruta</h2>
-        <div className="mt-3 rounded-lg border border-neutral-200 bg-white p-4">
+      <section>
+        <h2 className="text-lg font-medium text-neutral-900">Nueva ruta</h2>
+        <Card className="mt-3 p-4">
           <div className="flex flex-wrap items-end gap-4">
-            <label className="text-sm text-neutral-700">
+            <label className="text-sm font-medium text-neutral-700">
               Punto de inicio
-              <div className="relative mt-1">
-                <input
+              <div className="relative mt-1.5">
+                <Input
                   type="text"
                   placeholder="Escribe una dirección o lugar…"
+                  icon={<MapPin className="size-4" />}
                   value={direccionInicio}
                   onChange={(e) => onCambioDireccion(e.target.value)}
-                  className="w-64 rounded-md border border-neutral-300 px-3 py-2 text-sm"
+                  className="w-64"
                 />
                 {sugerencias.length > 0 && (
-                  <ul className="absolute z-[1000] mt-1 w-64 rounded-md border border-neutral-200 bg-white text-sm shadow-lg">
+                  <ul className="absolute z-[1000] mt-1 w-64 rounded-lg border border-neutral-200 bg-white text-sm shadow-lg">
                     {sugerencias.map((s, i) => (
                       <li key={i}>
                         <button
@@ -321,12 +351,13 @@ export default function Rutas() {
                 )}
               </div>
             </label>
-            <label className="text-sm text-neutral-700">
+            <label className="text-sm font-medium text-neutral-700">
               Camioneta
-              <select
+              <Select
                 value={camionetaId}
                 onChange={(e) => setCamionetaId(e.target.value)}
-                className="mt-1 block rounded-md border border-neutral-300 px-3 py-2 text-sm"
+                icon={<Truck className="size-4" />}
+                className="mt-1.5 w-56"
               >
                 <option value="">Selecciona…</option>
                 {camionetas.map((c) => (
@@ -334,15 +365,16 @@ export default function Rutas() {
                     {c.patente} ({c.tipo ?? "s/tipo"}) · cap. {c.capacidad_carga}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
-            <label className="text-sm text-neutral-700">
+            <label className="text-sm font-medium text-neutral-700">
               Hora de salida
-              <input
+              <Input
                 type="datetime-local"
+                icon={<Clock className="size-4" />}
                 value={horaSalida}
                 onChange={(e) => setHoraSalida(e.target.value)}
-                className="mt-1 block rounded-md border border-neutral-300 px-3 py-2 text-sm"
+                className="mt-1.5"
               />
             </label>
           </div>
@@ -386,18 +418,19 @@ export default function Rutas() {
                 Capacidad {camionetaElegida.capacidad_carga} — la respeta el optimizador automáticamente.
               </p>
             )}
-            <button
-              type="button"
+            <Button
               onClick={crearRuta}
-              disabled={creando || !camionetaId || !puntoInicio || pedidosSeleccionados.length === 0}
-              className="ml-auto rounded-md bg-neutral-900 px-4 py-2 text-sm text-white disabled:opacity-50"
+              loading={creando}
+              disabled={!camionetaId || !puntoInicio || pedidosSeleccionados.length === 0}
+              icon={<Sparkles className="size-4" />}
+              className="ml-auto"
             >
-              {creando ? "Optimizando…" : `Crear ruta con ${pedidosSeleccionados.length} pedidos`}
-            </button>
+              Crear ruta con {pedidosSeleccionados.length} pedidos
+            </Button>
           </div>
-        </div>
+        </Card>
 
-        <div className="mt-4 overflow-auto rounded-lg border border-neutral-200">
+        <Card className="mt-4 overflow-auto">
           <table className="w-full text-left text-sm">
             <thead className="bg-neutral-50 text-neutral-600">
               <tr>
@@ -412,8 +445,8 @@ export default function Rutas() {
             <tbody>
               {cargando ? (
                 <tr>
-                  <td colSpan={6} className="px-3 py-4 text-center text-neutral-500">
-                    Cargando…
+                  <td colSpan={6} className="px-3 py-6">
+                    <Spinner />
                   </td>
                 </tr>
               ) : pedidos.length === 0 ? (
@@ -426,20 +459,21 @@ export default function Rutas() {
                 pedidos.map((p) => {
                   const tienePosicion = p.equipos ? posiciones.some((x) => x.equipo_id === p.equipos!.id) : false;
                   return (
-                    <tr key={p.id} className="border-t border-neutral-100">
+                    <tr key={p.id} className="border-t border-neutral-100 hover:bg-neutral-50/60">
                       <td className="px-3 py-1.5">
-                        <input type="checkbox" checked={seleccionados.has(p.id)} onChange={() => toggleSeleccionado(p.id)} />
+                        <input
+                          type="checkbox"
+                          checked={seleccionados.has(p.id)}
+                          onChange={() => toggleSeleccionado(p.id)}
+                          className="size-4 rounded border-neutral-300 text-pine-700 focus:ring-pine-500"
+                        />
                       </td>
-                      <td className="px-3 py-1.5">{p.equipos?.identificador ?? "—"}</td>
+                      <td className="px-3 py-1.5 font-medium text-neutral-800">{p.equipos?.identificador ?? "—"}</td>
                       <td className="px-3 py-1.5">{p.insumos?.nombre ?? "—"}</td>
-                      <td className="px-3 py-1.5">{p.cantidad}</td>
+                      <td className="px-3 py-1.5 tabular-nums">{p.cantidad}</td>
                       <td className="px-3 py-1.5">{p.urgencia}</td>
                       <td className="px-3 py-1.5">
-                        {tienePosicion ? (
-                          <span className="text-green-700">conocida</span>
-                        ) : (
-                          <span className="text-amber-700">sin GPS reciente</span>
-                        )}
+                        {tienePosicion ? <Badge tone="success">conocida</Badge> : <Badge tone="warning">sin GPS reciente</Badge>}
                       </td>
                     </tr>
                   );
@@ -447,39 +481,53 @@ export default function Rutas() {
               )}
             </tbody>
           </table>
-        </div>
+        </Card>
       </section>
 
-      <section className="mt-8">
-        <h2 className="text-lg font-medium">Rutas creadas</h2>
-        {rutas.length === 0 ? (
-          <p className="mt-2 text-sm text-neutral-500">Todavía no hay rutas creadas.</p>
+      <section>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-medium text-neutral-900">Rutas creadas</h2>
+          {rutas.length > 0 && (
+            <SearchInput value={busquedaRutas} onChange={setBusquedaRutas} placeholder="Buscar por patente o estado…" className="w-64" />
+          )}
+        </div>
+        {rutasFiltradas.length === 0 ? (
+          <EmptyState icon={<RouteIcon className="size-8" />}>
+            {rutas.length === 0 ? "Todavía no hay rutas creadas." : "Ninguna ruta coincide con la búsqueda."}
+          </EmptyState>
         ) : (
           <div className="mt-3 space-y-4">
-            {rutas.map((r) => {
+            {rutasFiltradas.map((r) => {
               const entregadas = r.paradas.filter((p) => p.entregas.length > 0).length;
               return (
-                <div key={r.id} className="rounded-lg border border-neutral-200 bg-white p-4">
+                <Card key={r.id} className="p-4">
                   <div className="flex flex-wrap items-center gap-3 text-sm">
-                    <span className="font-medium">{r.camionetas?.patente ?? "sin camioneta"}</span>
+                    <span className="flex items-center gap-1.5 font-medium text-neutral-900">
+                      <Truck className="size-4 text-pine-700" />
+                      {r.camionetas?.patente ?? "sin camioneta"}
+                    </span>
                     <span className="text-neutral-500">{r.fecha}</span>
-                    <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs text-neutral-600">{r.estado}</span>
+                    <Badge tone={r.estado === "completada" ? "success" : r.estado === "en_curso" ? "info" : "neutral"}>
+                      {r.estado}
+                    </Badge>
                     <span className="text-xs text-neutral-500">
                       {entregadas} de {r.paradas.length} entregadas
                     </span>
-                    <Link to={`/rutas/${r.id}`} className="ml-auto text-xs text-blue-600 underline">
+                    <Link to={`/rutas/${r.id}`} className="ml-auto text-xs font-medium text-pine-700 underline">
                       Ver ficha →
                     </Link>
-                    <button
-                      type="button"
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       onClick={() => eliminarRuta(r.id)}
-                      disabled={eliminandoId === r.id}
-                      className="text-xs text-red-600 underline disabled:opacity-50"
+                      loading={eliminandoId === r.id}
+                      icon={<Trash2 className="size-3.5" />}
+                      className="text-red-600 hover:bg-red-50 hover:text-red-700"
                     >
-                      {eliminandoId === r.id ? "Eliminando…" : "Eliminar"}
-                    </button>
+                      Eliminar
+                    </Button>
                   </div>
-                  <ol className="mt-3 list-decimal space-y-1 pl-5 text-sm">
+                  <ol className="mt-3 list-decimal space-y-1 pl-5 text-sm text-neutral-700">
                     {r.paradas
                       .slice()
                       .sort((a, b) => a.orden - b.orden)
@@ -487,11 +535,13 @@ export default function Rutas() {
                         <li key={parada.id}>
                           {parada.pedidos?.equipos?.identificador ?? "—"} · {parada.pedidos?.insumos?.nombre ?? "—"} (
                           {parada.pedidos?.cantidad ?? "—"})
-                          {parada.entregas.length > 0 && <span className="ml-2 text-green-700">✓ entregado</span>}
+                          {parada.entregas.length > 0 && (
+                            <span className="ml-2 text-pine-700">✓ entregado</span>
+                          )}
                         </li>
                       ))}
                   </ol>
-                </div>
+                </Card>
               );
             })}
           </div>

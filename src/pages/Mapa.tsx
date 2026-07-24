@@ -2,7 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import { CircleMarker, MapContainer, Popup, TileLayer } from "react-leaflet";
 import type { LatLngExpression } from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { Filter, Map as MapIcon, TriangleAlert } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
+import PageHeader from "../components/ui/PageHeader";
+import Card from "../components/ui/Card";
+import Select from "../components/ui/Select";
+import EmptyState from "../components/ui/EmptyState";
 
 type EquipoMapa = {
   equipo_id: string;
@@ -62,45 +67,47 @@ export default function Mapa() {
       : CENTRO_POR_DEFECTO;
 
   return (
-    <div>
-      <h1 className="text-2xl font-semibold">Mapa de equipos</h1>
-      <p className="mt-2 text-neutral-600">
-        Última ubicación conocida de cada equipo, según lo cargado en Ubicaciones.
-      </p>
+    <div className="space-y-6">
+      <PageHeader
+        icon={<MapIcon className="size-5" />}
+        title="Mapa de equipos"
+        description="Última ubicación conocida de cada equipo, según lo cargado en Ubicaciones."
+      />
 
       {error && (
-        <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+        <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <TriangleAlert className="mt-0.5 size-4 shrink-0" />
+          {error}
+        </div>
       )}
 
-      <div className="mt-4 flex flex-wrap items-center gap-3">
-        <label className="text-sm text-neutral-700">
-          Filtrar por contrato{" "}
-          <select
-            value={contratoFiltro}
-            onChange={(e) => setContratoFiltro(e.target.value)}
-            className="ml-1 rounded-md border border-neutral-300 px-3 py-1.5 text-sm"
-          >
-            <option value="">Todos</option>
-            {contratos.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
-        </label>
+      <div className="flex flex-wrap items-center gap-3">
+        <Select
+          value={contratoFiltro}
+          onChange={(e) => setContratoFiltro(e.target.value)}
+          icon={<Filter className="size-4" />}
+          className="w-56"
+        >
+          <option value="">Todos los contratos</option>
+          {contratos.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </Select>
         <span className="text-sm text-neutral-500">{filtrados.length} equipos con ubicación</span>
       </div>
 
       {!cargando && equipos.length === 0 ? (
-        <p className="mt-6 text-sm text-neutral-500">
+        <EmptyState icon={<MapIcon className="size-8" />}>
           Todavía no hay ubicaciones cargadas. Sube el archivo en{" "}
-          <a href="/ubicaciones" className="text-blue-600 underline">
+          <a href="/ubicaciones" className="font-medium text-pine-700 underline">
             Ubicaciones
           </a>
           .
-        </p>
+        </EmptyState>
       ) : (
-        <div className="mt-4 overflow-hidden rounded-lg border border-neutral-200" style={{ height: 520 }}>
+        <Card className="overflow-hidden" style={{ height: 520 }}>
           <MapContainer center={centro} zoom={9} style={{ height: "100%", width: "100%" }}>
             <TileLayer
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
@@ -131,15 +138,15 @@ export default function Mapa() {
               </CircleMarker>
             ))}
           </MapContainer>
-        </div>
+        </Card>
       )}
 
       {contratos.length > 0 && (
-        <div className="mt-3 flex flex-wrap gap-3 text-xs text-neutral-600">
+        <div className="flex flex-wrap gap-3 rounded-lg border border-neutral-200 bg-white px-4 py-3 text-xs text-neutral-600">
           {contratos.map((c) => (
             <span key={c} className="flex items-center gap-1.5">
               <span
-                className="inline-block h-2.5 w-2.5 rounded-full"
+                className="inline-block size-2.5 rounded-full"
                 style={{ backgroundColor: colorPorContrato(c, contratos) }}
               />
               {c}

@@ -1,5 +1,15 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { Pencil, Plus, Save, Trash2, Truck, TriangleAlert, X } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
+import PageHeader from "../components/ui/PageHeader";
+import Card from "../components/ui/Card";
+import Badge from "../components/ui/Badge";
+import SearchInput from "../components/ui/SearchInput";
+import Input from "../components/ui/Input";
+import Select from "../components/ui/Select";
+import Button from "../components/ui/Button";
+import Spinner from "../components/ui/Spinner";
+import EmptyState from "../components/ui/EmptyState";
 
 type Estado = "disponible" | "en_ruta" | "mantencion";
 
@@ -13,6 +23,12 @@ type Camioneta = {
 };
 
 const ESTADOS: Estado[] = ["disponible", "en_ruta", "mantencion"];
+
+const TONO_ESTADO: Record<Estado, "success" | "info" | "warning"> = {
+  disponible: "success",
+  en_ruta: "info",
+  mantencion: "warning",
+};
 
 const FORM_VACIO = {
   tipo: "",
@@ -29,6 +45,7 @@ export default function Flota() {
   const [form, setForm] = useState(FORM_VACIO);
   const [editandoId, setEditandoId] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
+  const [busqueda, setBusqueda] = useState("");
 
   async function cargarFlota() {
     setCargando(true);
@@ -97,141 +114,154 @@ export default function Flota() {
     cargarFlota();
   }
 
+  const flotaFiltrada = useMemo(() => {
+    const texto = busqueda.trim().toLowerCase();
+    if (!texto) return flota;
+    return flota.filter(
+      (c) => c.patente.toLowerCase().includes(texto) || (c.tipo ?? "").toLowerCase().includes(texto)
+    );
+  }, [flota, busqueda]);
+
   return (
-    <div>
-      <h1 className="text-2xl font-semibold">Flota</h1>
-      <p className="mt-2 text-neutral-600">
-        Vehículos de la flota y sus restricciones para la planificación de rutas: autonomía y capacidad de
-        carga.
-      </p>
+    <div className="space-y-6">
+      <PageHeader
+        icon={<Truck className="size-5" />}
+        title="Flota"
+        description="Vehículos de la flota y sus restricciones para la planificación de rutas: autonomía y capacidad de carga."
+      />
 
       {error && (
-        <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+        <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <TriangleAlert className="mt-0.5 size-4 shrink-0" />
+          {error}
+        </div>
       )}
 
-      <form
-        onSubmit={onSubmit}
-        className="mt-6 grid max-w-2xl grid-cols-2 gap-4 rounded-lg border border-neutral-200 bg-white p-4 sm:grid-cols-3"
-      >
-        <label className="text-sm text-neutral-700">
-          Tipo
-          <input
-            type="text"
-            placeholder="camioneta"
-            value={form.tipo}
-            onChange={(e) => setForm({ ...form, tipo: e.target.value })}
-            className="mt-1 w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
-          />
-        </label>
-        <label className="text-sm text-neutral-700">
-          Patente
-          <input
-            type="text"
-            required
-            value={form.patente}
-            onChange={(e) => setForm({ ...form, patente: e.target.value })}
-            className="mt-1 w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
-          />
-        </label>
-        <label className="text-sm text-neutral-700">
-          Estado
-          <select
-            value={form.estado}
-            onChange={(e) => setForm({ ...form, estado: e.target.value as Estado })}
-            className="mt-1 w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
-          >
-            {ESTADOS.map((estado) => (
-              <option key={estado} value={estado}>
-                {estado}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="text-sm text-neutral-700">
-          Autonomía estanque lleno (km)
-          <input
-            type="number"
-            min="0"
-            value={form.autonomia_km}
-            onChange={(e) => setForm({ ...form, autonomia_km: e.target.value })}
-            className="mt-1 w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
-          />
-        </label>
-        <label className="text-sm text-neutral-700">
-          Capacidad de carga (kg)
-          <input
-            type="number"
-            min="0"
-            required
-            value={form.capacidad_carga}
-            onChange={(e) => setForm({ ...form, capacidad_carga: e.target.value })}
-            className="mt-1 w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
-          />
-        </label>
+      <Card className="p-4">
+        <form onSubmit={onSubmit} className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          <label className="text-sm font-medium text-neutral-700">
+            Tipo
+            <Input
+              type="text"
+              placeholder="camioneta"
+              value={form.tipo}
+              onChange={(e) => setForm({ ...form, tipo: e.target.value })}
+              className="mt-1.5"
+            />
+          </label>
+          <label className="text-sm font-medium text-neutral-700">
+            Patente
+            <Input
+              type="text"
+              required
+              value={form.patente}
+              onChange={(e) => setForm({ ...form, patente: e.target.value })}
+              className="mt-1.5"
+            />
+          </label>
+          <label className="text-sm font-medium text-neutral-700">
+            Estado
+            <Select value={form.estado} onChange={(e) => setForm({ ...form, estado: e.target.value as Estado })} className="mt-1.5">
+              {ESTADOS.map((estado) => (
+                <option key={estado} value={estado}>
+                  {estado}
+                </option>
+              ))}
+            </Select>
+          </label>
+          <label className="text-sm font-medium text-neutral-700">
+            Autonomía estanque lleno (km)
+            <Input
+              type="number"
+              min="0"
+              value={form.autonomia_km}
+              onChange={(e) => setForm({ ...form, autonomia_km: e.target.value })}
+              className="mt-1.5"
+            />
+          </label>
+          <label className="text-sm font-medium text-neutral-700">
+            Capacidad de carga (kg)
+            <Input
+              type="number"
+              min="0"
+              required
+              value={form.capacidad_carga}
+              onChange={(e) => setForm({ ...form, capacidad_carga: e.target.value })}
+              className="mt-1.5"
+            />
+          </label>
 
-        <div className="col-span-2 flex items-end gap-3 sm:col-span-3">
-          <button
-            type="submit"
-            disabled={guardando}
-            className="rounded-md bg-neutral-900 px-4 py-2 text-sm text-white disabled:opacity-50"
-          >
-            {guardando ? "Guardando…" : editandoId ? "Guardar cambios" : "Agregar a la flota"}
-          </button>
-          {editandoId && (
-            <button type="button" onClick={cancelarEdicion} className="text-sm text-neutral-500 underline">
-              Cancelar edición
-            </button>
-          )}
-        </div>
-      </form>
+          <div className="col-span-full flex items-center gap-3">
+            <Button type="submit" loading={guardando} icon={editandoId ? <Save className="size-4" /> : <Plus className="size-4" />}>
+              {editandoId ? "Guardar cambios" : "Agregar a la flota"}
+            </Button>
+            {editandoId && (
+              <Button type="button" variant="secondary" onClick={cancelarEdicion} icon={<X className="size-4" />}>
+                Cancelar edición
+              </Button>
+            )}
+          </div>
+        </form>
+      </Card>
 
-      <div className="mt-6 overflow-auto rounded-lg border border-neutral-200">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-neutral-50 text-neutral-600">
-            <tr>
-              <th className="px-3 py-2 font-medium">Tipo</th>
-              <th className="px-3 py-2 font-medium">Patente</th>
-              <th className="px-3 py-2 font-medium">Autonomía (km)</th>
-              <th className="px-3 py-2 font-medium">Capacidad carga (kg)</th>
-              <th className="px-3 py-2 font-medium">Estado</th>
-              <th className="px-3 py-2 font-medium"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {cargando ? (
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-lg font-medium text-neutral-900">Listado</h2>
+        {flota.length > 0 && (
+          <SearchInput value={busqueda} onChange={setBusqueda} placeholder="Buscar por patente o tipo…" className="w-72" />
+        )}
+      </div>
+
+      {cargando ? (
+        <Spinner />
+      ) : flota.length === 0 ? (
+        <EmptyState icon={<Truck className="size-8" />}>Aún no hay vehículos registrados.</EmptyState>
+      ) : (
+        <Card className="overflow-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-neutral-50 text-neutral-600">
               <tr>
-                <td colSpan={6} className="px-3 py-4 text-center text-neutral-500">
-                  Cargando…
-                </td>
+                <th className="px-3 py-2 font-medium">Tipo</th>
+                <th className="px-3 py-2 font-medium">Patente</th>
+                <th className="px-3 py-2 font-medium">Autonomía (km)</th>
+                <th className="px-3 py-2 font-medium">Capacidad carga (kg)</th>
+                <th className="px-3 py-2 font-medium">Estado</th>
+                <th className="px-3 py-2 font-medium"></th>
               </tr>
-            ) : flota.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="px-3 py-4 text-center text-neutral-500">
-                  Aún no hay vehículos registrados.
-                </td>
-              </tr>
-            ) : (
-              flota.map((c) => (
-                <tr key={c.id} className="border-t border-neutral-100">
-                  <td className="px-3 py-1.5">{c.tipo ?? "—"}</td>
-                  <td className="px-3 py-1.5">{c.patente}</td>
-                  <td className="px-3 py-1.5">{c.autonomia_km ?? "—"}</td>
-                  <td className="px-3 py-1.5">{c.capacidad_carga}</td>
-                  <td className="px-3 py-1.5">{c.estado}</td>
-                  <td className="px-3 py-1.5 text-right">
-                    <button type="button" onClick={() => editar(c)} className="text-blue-600 underline">
-                      Editar
-                    </button>
-                    <button type="button" onClick={() => eliminar(c.id)} className="ml-3 text-red-600 underline">
-                      Eliminar
-                    </button>
+            </thead>
+            <tbody>
+              {flotaFiltrada.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-3 py-4 text-center text-neutral-500">
+                    Ningún vehículo coincide con la búsqueda.
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+              ) : (
+                flotaFiltrada.map((c) => (
+                  <tr key={c.id} className="border-t border-neutral-100 hover:bg-neutral-50/60">
+                    <td className="px-3 py-1.5">{c.tipo ?? "—"}</td>
+                    <td className="px-3 py-1.5 font-medium text-neutral-800">{c.patente}</td>
+                    <td className="px-3 py-1.5 tabular-nums">{c.autonomia_km ?? "—"}</td>
+                    <td className="px-3 py-1.5 tabular-nums">{c.capacidad_carga}</td>
+                    <td className="px-3 py-1.5">
+                      <Badge tone={TONO_ESTADO[c.estado]}>{c.estado}</Badge>
+                    </td>
+                    <td className="px-3 py-1.5 text-right">
+                      <div className="flex justify-end gap-1">
+                        <Button variant="ghost" size="sm" onClick={() => editar(c)} icon={<Pencil className="size-3.5" />}>
+                          Editar
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => eliminar(c.id)} icon={<Trash2 className="size-3.5" />} className="text-red-600 hover:bg-red-50 hover:text-red-700">
+                          Eliminar
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </Card>
+      )}
     </div>
   );
 }
