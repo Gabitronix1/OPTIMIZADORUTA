@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import {
+  Building2,
   ClipboardList,
   Factory,
   LayoutDashboard,
@@ -14,6 +15,9 @@ import { supabase } from "../lib/supabaseClient";
 import PageHeader from "../components/ui/PageHeader";
 import StatCard from "../components/ui/StatCard";
 import Card from "../components/ui/Card";
+import Badge from "../components/ui/Badge";
+import Spinner from "../components/ui/Spinner";
+import EmptyState from "../components/ui/EmptyState";
 
 type Contadores = {
   equipos: number | null;
@@ -21,6 +25,20 @@ type Contadores = {
   rutasActivas: number | null;
   stockBajo: number | null;
   mantencionesVencidas: number | null;
+};
+
+type ResumenContrato = {
+  contrato_id: string | null;
+  contrato_codigo: string;
+  total_equipos: number;
+  equipos_operativos: number;
+  equipos_en_mantencion: number;
+  equipos_en_traslado: number;
+  equipos_detenidos: number;
+  mantenciones_vencidas: number;
+  mantenciones_proximas: number;
+  pedidos_en_ruta: number;
+  pedidos_pendientes: number;
 };
 
 const ACCESOS_RAPIDOS = [
@@ -38,6 +56,8 @@ export default function Home() {
     stockBajo: null,
     mantencionesVencidas: null,
   });
+  const [resumenContratos, setResumenContratos] = useState<ResumenContrato[]>([]);
+  const [cargandoResumen, setCargandoResumen] = useState(true);
 
   useEffect(() => {
     async function cargar() {
@@ -60,6 +80,14 @@ export default function Home() {
       });
     }
     cargar();
+
+    supabase
+      .from("resumen_contrato")
+      .select("*")
+      .then(({ data }) => {
+        setCargandoResumen(false);
+        setResumenContratos((data ?? []) as ResumenContrato[]);
+      });
   }, []);
 
   return (
@@ -115,6 +143,59 @@ export default function Home() {
           </p>
         </Card>
       )}
+
+      <section>
+        <h2 className="flex items-center gap-2 text-lg font-medium text-neutral-900">
+          <Building2 className="size-4.5 text-pine-700" />
+          Resumen por contrato
+        </h2>
+        {cargandoResumen ? (
+          <Spinner />
+        ) : resumenContratos.length === 0 ? (
+          <EmptyState icon={<Building2 className="size-8" />}>Aún no hay contratos ni equipos registrados.</EmptyState>
+        ) : (
+          <Card className="mt-3 overflow-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-neutral-50 text-neutral-600">
+                <tr>
+                  <th className="px-3 py-2 font-medium">Contrato</th>
+                  <th className="px-3 py-2 font-medium">Equipos</th>
+                  <th className="px-3 py-2 font-medium">Mantenciones</th>
+                  <th className="px-3 py-2 font-medium">Pedidos en ruta</th>
+                </tr>
+              </thead>
+              <tbody>
+                {resumenContratos.map((r) => (
+                  <tr key={r.contrato_id ?? "sin-contrato"} className="border-t border-neutral-100 hover:bg-neutral-50/60">
+                    <td className="px-3 py-1.5 font-medium text-neutral-800">{r.contrato_codigo}</td>
+                    <td className="px-3 py-1.5">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="tabular-nums text-neutral-700">{r.total_equipos}</span>
+                        {r.equipos_en_mantencion > 0 && <Badge tone="warning">{r.equipos_en_mantencion} en mantención</Badge>}
+                        {r.equipos_en_traslado > 0 && <Badge tone="info">{r.equipos_en_traslado} en traslado</Badge>}
+                        {r.equipos_detenidos > 0 && <Badge tone="danger">{r.equipos_detenidos} detenido(s)</Badge>}
+                      </div>
+                    </td>
+                    <td className="px-3 py-1.5">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {r.mantenciones_vencidas > 0 && <Badge tone="danger">{r.mantenciones_vencidas} vencidas</Badge>}
+                        {r.mantenciones_proximas > 0 && <Badge tone="warning">{r.mantenciones_proximas} próximas</Badge>}
+                        {r.mantenciones_vencidas === 0 && r.mantenciones_proximas === 0 && <Badge tone="success">Al día</Badge>}
+                      </div>
+                    </td>
+                    <td className="px-3 py-1.5">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="tabular-nums text-neutral-700">{r.pedidos_en_ruta}</span>
+                        {r.pedidos_pendientes > 0 && <Badge tone="info">{r.pedidos_pendientes} pendiente(s)</Badge>}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Card>
+        )}
+      </section>
 
       <div>
         <h2 className="text-lg font-medium text-neutral-900">Accesos rápidos</h2>
