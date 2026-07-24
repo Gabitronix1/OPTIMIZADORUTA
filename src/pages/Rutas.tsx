@@ -215,6 +215,7 @@ export default function Rutas() {
       setError(errOpt ? await mensajeErrorFuncion(errOpt) : (opt?.error ?? "No se pudo optimizar la ruta"));
       return;
     }
+    console.log("[ors-proxy] respuesta optimizar:", opt);
 
     const salida = new Date(horaSalida);
 
