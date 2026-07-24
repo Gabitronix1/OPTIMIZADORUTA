@@ -10,7 +10,8 @@ import Stock from "./pages/Stock";
 import Flota from "./pages/Flota";
 import Equipos from "./pages/Equipos";
 import Mapa from "./pages/Mapa";
-import Placeholder from "./pages/Placeholder";
+import Pedidos from "./pages/Pedidos";
+import Rutas from "./pages/Rutas";
 import { useAuth } from "./lib/useAuth";
 
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -39,7 +40,8 @@ export default function App() {
           <Route path="mantenimiento" element={<Mantenimiento />} />
           <Route path="flota" element={<Flota />} />
           <Route path="equipos" element={<Equipos />} />
-          <Route path="pedidos" element={<Placeholder titulo="Pedidos" />} />
+          <Route path="pedidos" element={<Pedidos />} />
+          <Route path="rutas" element={<Rutas />} />
           <Route path="bodega" element={<Stock />} />
         </Route>
       </Routes>

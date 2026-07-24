@@ -11,6 +11,7 @@ const NAV_ITEMS = [
   { to: "/flota", label: "Flota" },
   { to: "/equipos", label: "Equipos" },
   { to: "/pedidos", label: "Pedidos" },
+  { to: "/rutas", label: "Rutas" },
   { to: "/bodega", label: "Bodega" },
 ];
 
