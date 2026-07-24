@@ -5,6 +5,7 @@ import { useAuth } from "../lib/useAuth";
 const NAV_ITEMS = [
   { to: "/", label: "Inicio", end: true },
   { to: "/ubicaciones", label: "Ubicaciones" },
+  { to: "/produccion", label: "Producción" },
   { to: "/mantenimiento", label: "Mantención" },
   { to: "/equipos", label: "Equipos" },
   { to: "/pedidos", label: "Pedidos" },
