@@ -27,6 +27,13 @@ type RutaDetalleType = {
   id: string;
   fecha: string;
   estado: string;
+  punto_inicio_lat: number | null;
+  punto_inicio_lon: number | null;
+  punto_inicio_direccion: string | null;
+  hora_salida: string | null;
+  distancia_total_km: number | null;
+  duracion_total_min: number | null;
+  geometria: [number, number][] | null;
   camionetas: { patente: string; tipo: string | null; capacidad_carga: number; autonomia_km: number | null } | null;
   paradas: ParadaDetalle[];
 };
@@ -45,6 +52,19 @@ function iconoParada(numero: number, entregado: boolean) {
   });
 }
 
+const ICONO_INICIO = L.divIcon({
+  className: "",
+  html: '<div style="background:#111827;color:white;border-radius:9999px;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;border:2px solid white;box-shadow:0 1px 3px rgba(0,0,0,0.4)">S</div>',
+  iconSize: [26, 26],
+  iconAnchor: [13, 13],
+});
+
+function formatoDuracion(min: number) {
+  const h = Math.floor(min / 60);
+  const m = Math.round(min % 60);
+  return h > 0 ? `${h} h ${m} min` : `${m} min`;
+}
+
 export default function RutaDetalle() {
   const { id } = useParams<{ id: string }>();
   const [ruta, setRuta] = useState<RutaDetalleType | null>(null);
@@ -60,7 +80,7 @@ export default function RutaDetalle() {
       supabase
         .from("rutas")
         .select(
-          "id, fecha, estado, camionetas(patente, tipo, capacidad_carga, autonomia_km), paradas(id, orden, hora_estimada, entregas(id, momento_real, cantidad_entregada), pedidos(id, cantidad, urgencia, estado, insumos(nombre, unidad_medida, codigo_pieza), equipos(id, identificador, tipo, horometro_actual), faenas(nombre)))"
+          "id, fecha, estado, punto_inicio_lat, punto_inicio_lon, punto_inicio_direccion, hora_salida, distancia_total_km, duracion_total_min, geometria, camionetas(patente, tipo, capacidad_carga, autonomia_km), paradas(id, orden, hora_estimada, entregas(id, momento_real, cantidad_entregada), pedidos(id, cantidad, urgencia, estado, insumos(nombre, unidad_medida, codigo_pieza), equipos(id, identificador, tipo, horometro_actual), faenas(nombre)))"
         )
         .eq("id", id)
         .order("orden", { foreignTable: "paradas", ascending: true })
@@ -136,13 +156,12 @@ export default function RutaDetalle() {
     return <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>;
   if (!ruta) return <p className="text-sm text-neutral-500">No se encontró la ruta.</p>;
 
-  const centro: [number, number] =
-    conMapa.length > 0
-      ? [
-          conMapa.reduce((s, p) => s + p.lat, 0) / conMapa.length,
-          conMapa.reduce((s, p) => s + p.lon, 0) / conMapa.length,
-        ]
-      : CENTRO_POR_DEFECTO;
+  const tieneInicio = ruta.punto_inicio_lat !== null && ruta.punto_inicio_lon !== null;
+  const puntosMapa: [number, number][] = [
+    ...(tieneInicio ? [[ruta.punto_inicio_lat as number, ruta.punto_inicio_lon as number] as [number, number]] : []),
+    ...conMapa.map((p): [number, number] => [p.lat, p.lon]),
+  ];
+  const geometriaRuta = ruta.geometria && ruta.geometria.length > 0 ? ruta.geometria : null;
 
   return (
     <div>
@@ -175,24 +194,49 @@ export default function RutaDetalle() {
         </label>
       </div>
 
-      {ruta.camionetas && (
-        <p className="mt-2 text-sm text-neutral-500">
-          {ruta.camionetas.tipo ?? "vehículo"} · capacidad {ruta.camionetas.capacidad_carga} kg · autonomía{" "}
-          {ruta.camionetas.autonomia_km ?? "—"} km
-        </p>
-      )}
+      <div className="mt-2 flex flex-wrap gap-x-6 gap-y-1 text-sm text-neutral-500">
+        {ruta.camionetas && (
+          <span>
+            {ruta.camionetas.tipo ?? "vehículo"} · capacidad {ruta.camionetas.capacidad_carga} kg
+          </span>
+        )}
+        {ruta.punto_inicio_direccion && <span>Inicio: {ruta.punto_inicio_direccion}</span>}
+        {ruta.hora_salida && <span>Salida: {new Date(ruta.hora_salida).toLocaleString("es-CL")}</span>}
+        {ruta.distancia_total_km !== null && <span>{ruta.distancia_total_km} km totales</span>}
+        {ruta.duracion_total_min !== null && <span>{formatoDuracion(ruta.duracion_total_min)} de trayecto</span>}
+      </div>
 
-      {conMapa.length > 0 ? (
+      {puntosMapa.length > 0 ? (
         <div className="mt-4 overflow-hidden rounded-lg border border-neutral-200" style={{ height: 420 }}>
-          <MapContainer center={centro} zoom={9} style={{ height: "100%", width: "100%" }}>
+          <MapContainer
+            bounds={puntosMapa}
+            boundsOptions={{ padding: [30, 30] }}
+            center={CENTRO_POR_DEFECTO}
+            zoom={9}
+            style={{ height: "100%", width: "100%" }}
+          >
             <TileLayer
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
-            <Polyline
-              positions={conMapa.map((p) => [p.lat, p.lon])}
-              pathOptions={{ color: "#2563eb", weight: 3, dashArray: "6 6" }}
-            />
+            {geometriaRuta ? (
+              <Polyline positions={geometriaRuta} pathOptions={{ color: "#2563eb", weight: 4 }} />
+            ) : (
+              <Polyline
+                positions={puntosMapa}
+                pathOptions={{ color: "#2563eb", weight: 3, dashArray: "6 6" }}
+              />
+            )}
+            {tieneInicio && (
+              <Marker position={[ruta.punto_inicio_lat as number, ruta.punto_inicio_lon as number]} icon={ICONO_INICIO}>
+                <Popup>
+                  <div className="text-sm">
+                    <p className="font-medium">Inicio</p>
+                    <p>{ruta.punto_inicio_direccion ?? "Punto de partida"}</p>
+                  </div>
+                </Popup>
+              </Marker>
+            )}
             {conMapa.map((p) => (
               <Marker
                 key={p.parada.id}
@@ -242,6 +286,11 @@ export default function RutaDetalle() {
                       Urgencia: {parada.pedidos?.urgencia} · Tipo de equipo: {parada.pedidos?.equipos?.tipo ?? "—"} ·
                       Horómetro: {parada.pedidos?.equipos?.horometro_actual ?? "—"}
                     </p>
+                    {parada.hora_estimada && (
+                      <p className="mt-1 text-xs text-neutral-500">
+                        Llegada estimada: {new Date(parada.hora_estimada).toLocaleString("es-CL")}
+                      </p>
+                    )}
                   </div>
                   <div className="text-right">
                     {entregada ? (
