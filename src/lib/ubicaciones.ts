@@ -126,8 +126,15 @@ export function detectarFormatoPorEncabezados(encabezados: string[]): DealerForm
   return null;
 }
 
+/**
+ * JDLink manda una lectura cada 1-2 minutos (miles de filas por máquina y día). Nos quedamos solo
+ * con la más reciente de cada día por equipo, igual que el resto de los dealers (que informan una
+ * sola vez al día): evita miles de filas de telemetría redundantes por cada carga.
+ */
 function parsearJohnDeere(filas: Record<string, string>[]): ResultadoParseo {
   const resultado: ResultadoParseo = { formato: "john_deere", filas: [], filasConError: [] };
+  const ultimaPorDia = new Map<string, UbicacionParseada>();
+
   filas.forEach((fila, i) => {
     const identificador = fila["Alías"]?.trim();
     const lat = normalizarNumero(fila["Latitud"]);
@@ -136,16 +143,25 @@ function parsearJohnDeere(filas: Record<string, string>[]): ResultadoParseo {
       resultado.filasConError.push({ fila: i + 2, motivo: "Falta alias o coordenadas" });
       return;
     }
-    const momento = parsearFechaHoraJohnDeere(fila["Fecha"] ?? "", fila["Tiempo"] ?? "");
-    resultado.filas.push({
-      identificador,
-      lat,
-      lon,
-      momento,
-      horometro: normalizarNumero(fila["Horas de trabajo del motor"]),
-      advertencia: momento ? undefined : "No se pudo interpretar fecha/hora",
-    });
+    const fecha = fila["Fecha"]?.trim();
+    const momento = parsearFechaHoraJohnDeere(fecha ?? "", fila["Tiempo"] ?? "");
+    const clave = `${identificador}|${fecha ?? `sin-fecha-${i}`}`;
+    const existente = ultimaPorDia.get(clave);
+    const esMasReciente = !existente || !existente.momento || (momento !== null && momento > existente.momento);
+
+    if (!existente || esMasReciente) {
+      ultimaPorDia.set(clave, {
+        identificador,
+        lat,
+        lon,
+        momento,
+        horometro: normalizarNumero(fila["Horas de trabajo del motor"]),
+        advertencia: momento ? undefined : "No se pudo interpretar fecha/hora",
+      });
+    }
   });
+
+  resultado.filas = Array.from(ultimaPorDia.values());
   return resultado;
 }
 
