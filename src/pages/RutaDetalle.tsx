@@ -68,6 +68,28 @@ function formatoDuracion(min: number) {
   return h > 0 ? `${h} h ${m} min` : `${m} min`;
 }
 
+function urlGoogleMapsPunto(lat: number, lon: number): string {
+  const params = new URLSearchParams({ api: "1", destination: `${lat},${lon}`, travelmode: "driving" });
+  return `https://www.google.com/maps/dir/?${params.toString()}`;
+}
+
+/** Ruta multi-parada de Google Maps: gratis, sin API key, abre navegación real en el teléfono. */
+function urlGoogleMapsRuta(inicio: [number, number], paradas: [number, number][]): string {
+  if (paradas.length === 0) return urlGoogleMapsPunto(inicio[0], inicio[1]);
+  const destino = paradas[paradas.length - 1];
+  const intermedias = paradas.slice(0, -1);
+  const params = new URLSearchParams({
+    api: "1",
+    origin: `${inicio[0]},${inicio[1]}`,
+    destination: `${destino[0]},${destino[1]}`,
+    travelmode: "driving",
+  });
+  if (intermedias.length > 0) {
+    params.set("waypoints", intermedias.map(([lat, lon]) => `${lat},${lon}`).join("|"));
+  }
+  return `https://www.google.com/maps/dir/?${params.toString()}`;
+}
+
 export default function RutaDetalle() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -197,6 +219,19 @@ export default function RutaDetalle() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          {tieneInicio && conMapa.length > 0 && (
+            <a
+              href={urlGoogleMapsRuta(
+                [ruta.punto_inicio_lat as number, ruta.punto_inicio_lon as number],
+                conMapa.map((p): [number, number] => [p.lat, p.lon])
+              )}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-md bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700"
+            >
+              Navegar ruta en Google Maps
+            </a>
+          )}
           <label className="text-sm text-neutral-700">
             Estado de la ruta{" "}
             <select
@@ -340,7 +375,20 @@ export default function RutaDetalle() {
                       </p>
                     )}
                   </div>
-                  <div className="text-right">
+                  <div className="flex flex-col items-end gap-2 text-right">
+                    {(() => {
+                      const pos = conMapa.find((c) => c.parada.id === parada.id);
+                      return pos ? (
+                        <a
+                          href={urlGoogleMapsPunto(pos.lat, pos.lon)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-blue-600 underline"
+                        >
+                          Navegar hasta acá
+                        </a>
+                      ) : null;
+                    })()}
                     {entregada ? (
                       <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-700">
                         Entregado
