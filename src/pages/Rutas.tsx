@@ -187,9 +187,14 @@ export default function Rutas() {
     const paradasEntrada = pedidosSeleccionados
       .map((p) => {
         const pos = p.equipos ? posiciones.find((x) => x.equipo_id === p.equipos!.id) : undefined;
-        return pos ? { id: p.id, lat: pos.lat, lon: pos.lon, cantidad: Number(p.cantidad) } : null;
+        return pos
+          ? { id: p.id, lat: pos.lat, lon: pos.lon, cantidad: Number(p.cantidad), etiqueta: p.equipos?.identificador }
+          : null;
       })
-      .filter((p): p is { id: string; lat: number; lon: number; cantidad: number } => p !== null);
+      .filter(
+        (p): p is { id: string; lat: number; lon: number; cantidad: number; etiqueta: string | undefined } =>
+          p !== null
+      );
 
     if (paradasEntrada.length === 0) {
       setCreando(false);
