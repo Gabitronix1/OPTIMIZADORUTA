@@ -46,6 +46,16 @@ type StockBajo = {
   stock_total: number;
 };
 
+type StockDisponible = {
+  insumo_id: string;
+  nombre: string;
+  codigo_pieza: string | null;
+  unidad_medida: string;
+  stock_total: number;
+  stock_comprometido: number;
+  stock_disponible: number;
+};
+
 type ProximaMantencion = {
   plan_item_id: string;
   equipo_id: string;
@@ -94,6 +104,7 @@ export default function Pedidos() {
   const [equipos, setEquipos] = useState<Equipo[]>([]);
   const [faenas, setFaenas] = useState<Faena[]>([]);
   const [stockBajo, setStockBajo] = useState<StockBajo[]>([]);
+  const [stockDisponible, setStockDisponible] = useState<StockDisponible[]>([]);
   const [proximas, setProximas] = useState<ProximaMantencion[]>([]);
   const [filtroEstado, setFiltroEstado] = useState<EstadoPedido | "">("");
   const [busqueda, setBusqueda] = useState("");
@@ -120,6 +131,11 @@ export default function Pedidos() {
   useEffect(() => {
     cargarPedidos(filtroEstado);
   }, [filtroEstado]);
+
+  async function cargarStockDisponible() {
+    const { data } = await supabase.from("stock_disponible_insumo").select("*");
+    setStockDisponible((data ?? []) as StockDisponible[]);
+  }
 
   useEffect(() => {
     supabase
@@ -148,7 +164,20 @@ export default function Pedidos() {
       .order("horas_restantes", { ascending: true })
       .limit(30)
       .then(({ data }) => setProximas((data ?? []) as ProximaMantencion[]));
+    cargarStockDisponible();
   }, []);
+
+  const stockPorInsumo = useMemo(() => {
+    const mapa = new Map<string, StockDisponible>();
+    for (const s of stockDisponible) mapa.set(s.insumo_id, s);
+    return mapa;
+  }, [stockDisponible]);
+
+  const disponibleSeleccionado = form.insumo_id ? stockPorInsumo.get(form.insumo_id) : undefined;
+  const cantidadExcedeDisponible =
+    disponibleSeleccionado !== undefined &&
+    form.cantidad !== "" &&
+    Number(form.cantidad) > disponibleSeleccionado.stock_disponible;
 
   async function crearPedido(payload: {
     insumo_id: string;
@@ -164,6 +193,7 @@ export default function Pedidos() {
       return false;
     }
     cargarPedidos(filtroEstado);
+    cargarStockDisponible();
     return true;
   }
 
@@ -190,6 +220,12 @@ export default function Pedidos() {
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (cantidadExcedeDisponible && disponibleSeleccionado) {
+      setError(
+        `Stock insuficiente para "${disponibleSeleccionado.nombre}": disponible ${disponibleSeleccionado.stock_disponible} ${disponibleSeleccionado.unidad_medida}, solicitado ${form.cantidad}.`
+      );
+      return;
+    }
     setGuardando(true);
     const ok = await crearPedido({
       insumo_id: form.insumo_id,
@@ -202,13 +238,40 @@ export default function Pedidos() {
     if (ok) setForm(FORM_VACIO);
   }
 
-  async function cambiarEstado(id: string, estado: EstadoPedido) {
-    const { error } = await supabase.from("pedidos").update({ estado }).eq("id", id);
+  async function cancelarPedido(id: string) {
+    const { error } = await supabase.from("pedidos").update({ estado: "cancelado" }).eq("id", id);
     if (error) {
       setError(error.message);
       return;
     }
     cargarPedidos(filtroEstado);
+    cargarStockDisponible();
+  }
+
+  async function confirmarEntregaPedido(pedido: Pedido) {
+    setError(null);
+    const { data: parada, error: errParada } = await supabase
+      .from("paradas")
+      .select("id")
+      .eq("pedido_id", pedido.id)
+      .limit(1)
+      .maybeSingle();
+    if (errParada || !parada) {
+      setError(errParada?.message ?? "No se encontró la parada asociada a este pedido.");
+      return;
+    }
+    const { error: errEntrega } = await supabase.from("entregas").insert({
+      parada_id: parada.id,
+      momento_real: new Date().toISOString(),
+      cantidad_entregada: pedido.cantidad,
+    });
+    if (errEntrega) {
+      setError(errEntrega.message);
+      return;
+    }
+    await supabase.from("pedidos").update({ estado: "entregado" }).eq("id", pedido.id);
+    cargarPedidos(filtroEstado);
+    cargarStockDisponible();
   }
 
   const pedidosFiltrados = useMemo(() => {
@@ -325,11 +388,15 @@ export default function Pedidos() {
               Insumo
               <Select required value={form.insumo_id} onChange={(e) => setForm({ ...form, insumo_id: e.target.value })} className="mt-1.5">
                 <option value="">Selecciona…</option>
-                {insumos.map((i) => (
-                  <option key={i.id} value={i.id}>
-                    {i.nombre}
-                  </option>
-                ))}
+                {insumos.map((i) => {
+                  const disp = stockPorInsumo.get(i.id);
+                  return (
+                    <option key={i.id} value={i.id}>
+                      {i.nombre}
+                      {disp ? ` (disp. ${disp.stock_disponible} ${disp.unidad_medida})` : ""}
+                    </option>
+                  );
+                })}
               </Select>
             </label>
             <label className="text-sm font-medium text-neutral-700">
@@ -377,8 +444,14 @@ export default function Pedidos() {
                 required
                 value={form.cantidad}
                 onChange={(e) => setForm({ ...form, cantidad: e.target.value })}
-                className="mt-1.5"
+                className={`mt-1.5 ${cantidadExcedeDisponible ? "border-red-400 focus:border-red-500 focus:ring-red-100" : ""}`}
               />
+              {disponibleSeleccionado && (
+                <p className={`mt-1 text-xs ${cantidadExcedeDisponible ? "text-red-600" : "text-neutral-500"}`}>
+                  Disponible: {disponibleSeleccionado.stock_disponible} {disponibleSeleccionado.unidad_medida}
+                  {disponibleSeleccionado.stock_comprometido > 0 && ` (${disponibleSeleccionado.stock_comprometido} ya comprometido)`}
+                </p>
+              )}
             </label>
             <label className="text-sm font-medium text-neutral-700">
               Urgencia
@@ -391,7 +464,7 @@ export default function Pedidos() {
               </Select>
             </label>
             <div className="col-span-full flex items-end">
-              <Button type="submit" loading={guardando} icon={<Plus className="size-4" />}>
+              <Button type="submit" loading={guardando} disabled={cantidadExcedeDisponible} icon={<Plus className="size-4" />}>
                 Crear pedido
               </Button>
             </div>
@@ -451,7 +524,7 @@ export default function Pedidos() {
                           variant="ghost"
                           size="sm"
                           icon={<X className="size-3.5" />}
-                          onClick={() => cambiarEstado(p.id, "cancelado")}
+                          onClick={() => cancelarPedido(p.id)}
                           className="text-red-600 hover:bg-red-50 hover:text-red-700"
                         >
                           Cancelar
@@ -462,7 +535,7 @@ export default function Pedidos() {
                           variant="ghost"
                           size="sm"
                           icon={<CheckCircle2 className="size-3.5" />}
-                          onClick={() => cambiarEstado(p.id, "entregado")}
+                          onClick={() => confirmarEntregaPedido(p)}
                           className="text-pine-700 hover:bg-pine-50"
                         >
                           Marcar entregado

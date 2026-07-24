@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Upload, Warehouse } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 import { parsearArchivoStock, type ResultadoParseoStock } from "../lib/stock";
@@ -7,8 +7,22 @@ import Card from "../components/ui/Card";
 import Badge from "../components/ui/Badge";
 import SearchInput from "../components/ui/SearchInput";
 import Button from "../components/ui/Button";
+import Spinner from "../components/ui/Spinner";
+import EmptyState from "../components/ui/EmptyState";
 
 type EstadoCarga = "idle" | "cargando" | "listo" | "error";
+
+type StockDisponible = {
+  insumo_id: string;
+  nombre: string;
+  codigo_pieza: string | null;
+  categoria: string | null;
+  unidad_medida: string;
+  stock_minimo: number | null;
+  stock_total: number;
+  stock_comprometido: number;
+  stock_disponible: number;
+};
 
 export default function Stock() {
   const [resultado, setResultado] = useState<ResultadoParseoStock | null>(null);
@@ -16,6 +30,36 @@ export default function Stock() {
   const [estadoCarga, setEstadoCarga] = useState<EstadoCarga>("idle");
   const [mensajeCarga, setMensajeCarga] = useState<string | null>(null);
   const [busqueda, setBusqueda] = useState("");
+
+  const [inventario, setInventario] = useState<StockDisponible[]>([]);
+  const [cargandoInventario, setCargandoInventario] = useState(true);
+  const [busquedaInventario, setBusquedaInventario] = useState("");
+
+  const cargarInventario = useCallback(async () => {
+    setCargandoInventario(true);
+    const { data } = await supabase
+      .from("stock_disponible_insumo")
+      .select("*")
+      .gt("stock_total", 0)
+      .order("nombre");
+    setInventario((data ?? []) as StockDisponible[]);
+    setCargandoInventario(false);
+  }, []);
+
+  useEffect(() => {
+    cargarInventario();
+  }, [cargarInventario]);
+
+  const inventarioFiltrado = useMemo(() => {
+    const texto = busquedaInventario.trim().toLowerCase();
+    if (!texto) return inventario;
+    return inventario.filter(
+      (i) =>
+        i.nombre.toLowerCase().includes(texto) ||
+        (i.codigo_pieza ?? "").toLowerCase().includes(texto) ||
+        (i.categoria ?? "").toLowerCase().includes(texto)
+    );
+  }, [inventario, busquedaInventario]);
 
   const onArchivoSeleccionado = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const archivo = e.target.files?.[0];
@@ -72,6 +116,7 @@ export default function Stock() {
       setEstadoCarga("listo");
       setMensajeCarga(`${exitosas} ítems de stock cargados correctamente.`);
     }
+    cargarInventario();
   }
 
   return (
@@ -82,14 +127,69 @@ export default function Stock() {
         description="Sube la planilla de stock (.xlsx). Se crean automáticamente los insumos y bodegas que no existan, y se actualiza la cantidad de cada artículo — subir el mismo archivo de nuevo actualiza en vez de duplicar."
       />
 
-      <div>
-        <label className="flex w-fit cursor-pointer items-center gap-2 rounded-lg border border-dashed border-neutral-300 bg-white px-4 py-3 text-sm text-neutral-700 shadow-sm hover:border-pine-400 hover:bg-pine-50/40">
+      <section>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-medium text-neutral-900">Inventario actual</h2>
+          <SearchInput
+            value={busquedaInventario}
+            onChange={setBusquedaInventario}
+            placeholder="Buscar por artículo, código o línea…"
+            className="w-72"
+          />
+        </div>
+        <p className="mt-1 text-xs text-neutral-500">
+          El disponible descuenta lo ya comprometido en pedidos pendientes o planificados — es lo que queda para pedir.
+        </p>
+        {cargandoInventario ? (
+          <Spinner />
+        ) : inventarioFiltrado.length === 0 ? (
+          <EmptyState icon={<Warehouse className="size-8" />}>No hay insumos con stock cargado.</EmptyState>
+        ) : (
+          <Card className="mt-3 max-h-[32rem] overflow-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="sticky top-0 bg-neutral-50 text-neutral-600">
+                <tr>
+                  <th className="px-3 py-2 font-medium">Artículo</th>
+                  <th className="px-3 py-2 font-medium">Línea</th>
+                  <th className="px-3 py-2 font-medium">Stock total</th>
+                  <th className="px-3 py-2 font-medium">Comprometido</th>
+                  <th className="px-3 py-2 font-medium">Disponible</th>
+                </tr>
+              </thead>
+              <tbody>
+                {inventarioFiltrado.map((i) => (
+                  <tr key={i.insumo_id} className="border-t border-neutral-100 hover:bg-neutral-50/60">
+                    <td className="px-3 py-1.5">
+                      <p className="font-medium text-neutral-800">{i.nombre}</p>
+                      {i.codigo_pieza && <p className="text-xs text-neutral-400">{i.codigo_pieza}</p>}
+                    </td>
+                    <td className="px-3 py-1.5 text-neutral-500">{i.categoria ?? "—"}</td>
+                    <td className="px-3 py-1.5 tabular-nums">
+                      {i.stock_total} {i.unidad_medida}
+                    </td>
+                    <td className="px-3 py-1.5 tabular-nums text-neutral-500">{i.stock_comprometido}</td>
+                    <td className="px-3 py-1.5">
+                      <Badge tone={i.stock_disponible <= 0 ? "danger" : i.stock_minimo !== null && i.stock_disponible < i.stock_minimo ? "warning" : "success"}>
+                        {i.stock_disponible} {i.unidad_medida}
+                      </Badge>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Card>
+        )}
+      </section>
+
+      <section>
+        <h2 className="text-lg font-medium text-neutral-900">Cargar planilla</h2>
+        <label className="mt-3 flex w-fit cursor-pointer items-center gap-2 rounded-lg border border-dashed border-neutral-300 bg-white px-4 py-3 text-sm text-neutral-700 shadow-sm hover:border-pine-400 hover:bg-pine-50/40">
           <Upload className="size-4 text-pine-700" />
           <span>Seleccionar archivo (.xlsx)</span>
           <input type="file" accept=".xlsx" className="hidden" onChange={onArchivoSeleccionado} />
         </label>
         {nombreArchivo && <p className="mt-1.5 text-xs text-neutral-500">{nombreArchivo}</p>}
-      </div>
+      </section>
 
       {resultado && (
         <div>
