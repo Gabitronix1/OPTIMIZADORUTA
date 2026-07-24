@@ -10,6 +10,16 @@ type FilaConMatch = TurnoParseado & {
 
 type EstadoCarga = "idle" | "cargando" | "listo" | "error";
 
+type TurnoCargado = {
+  id: string;
+  dia_jornada: string;
+  horometro_inicio: number | null;
+  horometro_termino: number | null;
+  equipos: { identificador: string } | null;
+  contratos: { codigo: string } | null;
+  fundos: { nombre: string } | null;
+};
+
 export default function Produccion() {
   const [equipos, setEquipos] = useState<Equipo[] | null>(null);
   const [errorEquipos, setErrorEquipos] = useState<string | null>(null);
@@ -17,6 +27,27 @@ export default function Produccion() {
   const [nombreArchivo, setNombreArchivo] = useState<string | null>(null);
   const [estadoCarga, setEstadoCarga] = useState<EstadoCarga>("idle");
   const [mensajeCarga, setMensajeCarga] = useState<string | null>(null);
+  const [cargadas, setCargadas] = useState<TurnoCargado[]>([]);
+  const [totalCargadas, setTotalCargadas] = useState(0);
+  const [cargandoTabla, setCargandoTabla] = useState(true);
+
+  async function cargarTablaProduccion() {
+    setCargandoTabla(true);
+    const { data, error, count } = await supabase
+      .from("lecturas_horometro_turno")
+      .select("id, dia_jornada, horometro_inicio, horometro_termino, equipos(identificador), contratos(codigo), fundos(nombre)", {
+        count: "exact",
+      })
+      .order("dia_jornada", { ascending: false })
+      .limit(300);
+    setCargandoTabla(false);
+    if (error) {
+      setErrorEquipos(error.message);
+      return;
+    }
+    setCargadas((data ?? []) as unknown as TurnoCargado[]);
+    setTotalCargadas(count ?? 0);
+  }
 
   useEffect(() => {
     supabase
@@ -29,6 +60,7 @@ export default function Produccion() {
         }
         setEquipos(data ?? []);
       });
+    cargarTablaProduccion();
   }, []);
 
   const onArchivoSeleccionado = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -84,6 +116,7 @@ export default function Produccion() {
       setEstadoCarga("listo");
       setMensajeCarga(`${exitosas} turnos cargados correctamente.`);
     }
+    cargarTablaProduccion();
   }
 
   return (
@@ -101,13 +134,56 @@ export default function Produccion() {
         </div>
       )}
 
-      <div className="mt-4">
-        <label className="flex w-fit cursor-pointer items-center gap-2 rounded-md border border-neutral-300 bg-white px-4 py-2 text-sm hover:bg-neutral-50">
-          <span>Seleccionar archivo (.xls)</span>
-          <input type="file" accept=".xls,.html,.htm" className="hidden" onChange={onArchivoSeleccionado} />
-        </label>
-        {nombreArchivo && <p className="mt-1 text-xs text-neutral-500">{nombreArchivo}</p>}
-      </div>
+      <section className="mt-6">
+        <h2 className="text-lg font-medium">Turnos cargados</h2>
+        {cargandoTabla ? (
+          <p className="mt-2 text-sm text-neutral-500">Cargando…</p>
+        ) : cargadas.length === 0 ? (
+          <p className="mt-2 text-sm text-neutral-500">Todavía no hay turnos cargados.</p>
+        ) : (
+          <>
+            <p className="mt-1 text-xs text-neutral-500">
+              Mostrando los {cargadas.length} más recientes de {totalCargadas} en total.
+            </p>
+            <div className="mt-3 max-h-96 overflow-auto rounded-lg border border-neutral-200">
+              <table className="w-full text-left text-sm">
+                <thead className="sticky top-0 bg-neutral-50 text-neutral-600">
+                  <tr>
+                    <th className="px-3 py-2 font-medium">Equipo</th>
+                    <th className="px-3 py-2 font-medium">Contrato</th>
+                    <th className="px-3 py-2 font-medium">Fundo</th>
+                    <th className="px-3 py-2 font-medium">Día jornada</th>
+                    <th className="px-3 py-2 font-medium">Horómetro inicio</th>
+                    <th className="px-3 py-2 font-medium">Horómetro término</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cargadas.map((t) => (
+                    <tr key={t.id} className="border-t border-neutral-100">
+                      <td className="px-3 py-1.5">{t.equipos?.identificador ?? "—"}</td>
+                      <td className="px-3 py-1.5">{t.contratos?.codigo ?? "—"}</td>
+                      <td className="px-3 py-1.5">{t.fundos?.nombre ?? "—"}</td>
+                      <td className="px-3 py-1.5">{t.dia_jornada}</td>
+                      <td className="px-3 py-1.5">{t.horometro_inicio ?? "—"}</td>
+                      <td className="px-3 py-1.5">{t.horometro_termino ?? "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </section>
+
+      <section className="mt-8">
+        <h2 className="text-lg font-medium">Subir nuevo archivo</h2>
+        <div className="mt-4">
+          <label className="flex w-fit cursor-pointer items-center gap-2 rounded-md border border-neutral-300 bg-white px-4 py-2 text-sm hover:bg-neutral-50">
+            <span>Seleccionar archivo (.xls)</span>
+            <input type="file" accept=".xls,.html,.htm" className="hidden" onChange={onArchivoSeleccionado} />
+          </label>
+          {nombreArchivo && <p className="mt-1 text-xs text-neutral-500">{nombreArchivo}</p>}
+        </div>
 
       {resultado && (
         <div className="mt-6">
@@ -189,6 +265,7 @@ export default function Produccion() {
           )}
         </div>
       )}
+      </section>
     </div>
   );
 }

@@ -15,6 +15,14 @@ type FilaConMatch = UbicacionParseada & {
 
 type EstadoCarga = "idle" | "cargando" | "listo" | "error";
 
+type UbicacionCargada = {
+  id: string;
+  identificador: string;
+  momento: string;
+  lat: number;
+  lon: number;
+};
+
 export default function Ubicaciones() {
   const [equipos, setEquipos] = useState<Equipo[] | null>(null);
   const [errorEquipos, setErrorEquipos] = useState<string | null>(null);
@@ -22,6 +30,25 @@ export default function Ubicaciones() {
   const [nombreArchivo, setNombreArchivo] = useState<string | null>(null);
   const [estadoCarga, setEstadoCarga] = useState<EstadoCarga>("idle");
   const [mensajeCarga, setMensajeCarga] = useState<string | null>(null);
+  const [cargadas, setCargadas] = useState<UbicacionCargada[]>([]);
+  const [totalCargadas, setTotalCargadas] = useState(0);
+  const [cargandoTabla, setCargandoTabla] = useState(true);
+
+  async function cargarTablaUbicaciones() {
+    setCargandoTabla(true);
+    const { data, error, count } = await supabase
+      .from("telemetria_equipos_detalle")
+      .select("id, identificador, momento, lat, lon", { count: "exact" })
+      .order("momento", { ascending: false })
+      .limit(300);
+    setCargandoTabla(false);
+    if (error) {
+      setErrorEquipos(error.message);
+      return;
+    }
+    setCargadas(data ?? []);
+    setTotalCargadas(count ?? 0);
+  }
 
   useEffect(() => {
     supabase
@@ -34,6 +61,7 @@ export default function Ubicaciones() {
         }
         setEquipos(data ?? []);
       });
+    cargarTablaUbicaciones();
   }, []);
 
   const onArchivoSeleccionado = useCallback(
@@ -94,6 +122,7 @@ export default function Ubicaciones() {
       setEstadoCarga("listo");
       setMensajeCarga(`${exitosas} ubicaciones cargadas correctamente.`);
     }
+    cargarTablaUbicaciones();
   }
 
   return (
@@ -110,13 +139,52 @@ export default function Ubicaciones() {
         </div>
       )}
 
-      <div className="mt-4">
-        <label className="flex w-fit cursor-pointer items-center gap-2 rounded-md border border-neutral-300 bg-white px-4 py-2 text-sm hover:bg-neutral-50">
-          <span>Seleccionar archivo (.csv o .xlsx)</span>
-          <input type="file" accept=".csv,.xlsx" className="hidden" onChange={onArchivoSeleccionado} />
-        </label>
-        {nombreArchivo && <p className="mt-1 text-xs text-neutral-500">{nombreArchivo}</p>}
-      </div>
+      <section className="mt-6">
+        <h2 className="text-lg font-medium">Ubicaciones cargadas</h2>
+        {cargandoTabla ? (
+          <p className="mt-2 text-sm text-neutral-500">Cargando…</p>
+        ) : cargadas.length === 0 ? (
+          <p className="mt-2 text-sm text-neutral-500">Todavía no hay ubicaciones cargadas.</p>
+        ) : (
+          <>
+            <p className="mt-1 text-xs text-neutral-500">
+              Mostrando las {cargadas.length} más recientes de {totalCargadas} en total.
+            </p>
+            <div className="mt-3 max-h-96 overflow-auto rounded-lg border border-neutral-200">
+              <table className="w-full text-left text-sm">
+                <thead className="sticky top-0 bg-neutral-50 text-neutral-600">
+                  <tr>
+                    <th className="px-3 py-2 font-medium">Equipo</th>
+                    <th className="px-3 py-2 font-medium">Momento</th>
+                    <th className="px-3 py-2 font-medium">Lat</th>
+                    <th className="px-3 py-2 font-medium">Lon</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cargadas.map((u) => (
+                    <tr key={u.id} className="border-t border-neutral-100">
+                      <td className="px-3 py-1.5">{u.identificador}</td>
+                      <td className="px-3 py-1.5">{new Date(u.momento).toLocaleString("es-CL")}</td>
+                      <td className="px-3 py-1.5">{u.lat.toFixed(5)}</td>
+                      <td className="px-3 py-1.5">{u.lon.toFixed(5)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </section>
+
+      <section className="mt-8">
+        <h2 className="text-lg font-medium">Subir nuevo archivo</h2>
+        <div className="mt-4">
+          <label className="flex w-fit cursor-pointer items-center gap-2 rounded-md border border-neutral-300 bg-white px-4 py-2 text-sm hover:bg-neutral-50">
+            <span>Seleccionar archivo (.csv o .xlsx)</span>
+            <input type="file" accept=".csv,.xlsx" className="hidden" onChange={onArchivoSeleccionado} />
+          </label>
+          {nombreArchivo && <p className="mt-1 text-xs text-neutral-500">{nombreArchivo}</p>}
+        </div>
 
       {resultado && (
         <div className="mt-6">
@@ -212,6 +280,7 @@ export default function Ubicaciones() {
           )}
         </div>
       )}
+      </section>
     </div>
   );
 }
