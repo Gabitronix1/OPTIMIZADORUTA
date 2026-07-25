@@ -15,8 +15,8 @@ type Equipo = {
   id: string;
   identificador: string;
   contrato_id: string | null;
+  maquina_base_id: string | null;
   contratos: { codigo: string } | null;
-  maquina_base: { identificador: string } | null;
 };
 
 type ResumenEquipo = {
@@ -68,7 +68,7 @@ export default function Mantenimiento() {
       const [equiposRes, contratosRes, resumenRes] = await Promise.all([
         supabase
           .from("equipos")
-          .select("id, identificador, contrato_id, contratos(codigo), maquina_base:equipos!maquina_base_id(identificador)")
+          .select("id, identificador, contrato_id, maquina_base_id, contratos(codigo)")
           .order("identificador"),
         supabase.from("contratos").select("id, codigo").order("codigo"),
         supabase.from("mantenciones_resumen_equipo").select("equipo_id, horometro_actual, total_items, vencidas, proximas"),
@@ -118,6 +118,12 @@ export default function Mantenimiento() {
     for (const r of resumenes) mapa.set(r.equipo_id, r);
     return mapa;
   }, [resumenes]);
+
+  const identificadorPorId = useMemo(() => {
+    const mapa = new Map<string, string>();
+    for (const eq of equipos) mapa.set(eq.id, eq.identificador);
+    return mapa;
+  }, [equipos]);
 
   const grupos = useMemo(() => {
     const texto = busqueda.trim().toLowerCase();
@@ -251,13 +257,18 @@ export default function Mantenimiento() {
                           }`}
                         >
                           <span>
-                            <span className="font-medium text-neutral-800">{eq.identificador}</span>
+                            <span className="flex items-center gap-1.5">
+                              <span className="font-medium text-neutral-800">{eq.identificador}</span>
+                              {eq.maquina_base_id && (
+                                <span title={`Cabezal de ${identificadorPorId.get(eq.maquina_base_id) ?? "—"}`}>
+                                  <Badge tone="neutral">cabezal</Badge>
+                                </span>
+                              )}
+                            </span>
                             <span className="block text-xs text-neutral-400">
-                              {eq.maquina_base
-                                ? `cabezal de ${eq.maquina_base.identificador} · ${r?.total_items ?? 0} ítems`
-                                : r?.horometro_actual !== null && r?.horometro_actual !== undefined
-                                  ? `${r.horometro_actual} hrs · ${r.total_items} ítems`
-                                  : "sin horómetro"}
+                              {r?.horometro_actual !== null && r?.horometro_actual !== undefined
+                                ? `${r.horometro_actual} hrs · ${r?.total_items ?? 0} ítems`
+                                : "sin horómetro"}
                             </span>
                           </span>
                           <span className="flex shrink-0 gap-1.5">
@@ -289,10 +300,10 @@ export default function Mantenimiento() {
                     {equipoActivo?.contratos?.codigo ?? "Sin contrato"} · horómetro{" "}
                     {resumenPorEquipo.get(equipoSeleccionado)?.horometro_actual ?? "—"}
                   </p>
-                  {equipoActivo?.maquina_base && (
+                  {equipoActivo?.maquina_base_id && (
                     <p className="mt-1 text-xs text-pine-700">
-                      Cabezal montado en {equipoActivo.maquina_base.identificador} — usa su horómetro, pero mantiene su propio
-                      plan de mantenimiento e insumos.
+                      Cabezal montado en {identificadorPorId.get(equipoActivo.maquina_base_id) ?? "—"} — usa su horómetro, pero
+                      mantiene su propio plan de mantenimiento e insumos.
                     </p>
                   )}
                 </div>

@@ -25,7 +25,6 @@ type Equipo = {
   horometro_actualizado_at: string | null;
   maquina_base_id: string | null;
   contratos: { codigo: string } | null;
-  maquina_base: { identificador: string } | null;
 };
 
 const ESTADOS: Estado[] = ["operativo", "mantencion", "traslado", "detenido"];
@@ -61,7 +60,7 @@ export default function Equipos() {
     const { data, error } = await supabase
       .from("equipos")
       .select(
-        "id, identificador, tipo, estado, contrato_id, horometro_actual, horometro_actualizado_at, maquina_base_id, contratos(codigo), maquina_base:equipos!maquina_base_id(identificador)"
+        "id, identificador, tipo, estado, contrato_id, horometro_actual, horometro_actualizado_at, maquina_base_id, contratos(codigo)"
       )
       .order("identificador");
     setCargando(false);
@@ -143,6 +142,12 @@ export default function Equipos() {
       return coincideTexto && coincideContrato;
     });
   }, [equipos, busqueda, contratoFiltro]);
+
+  const identificadorPorId = useMemo(() => {
+    const mapa = new Map<string, string>();
+    for (const eq of equipos) mapa.set(eq.id, eq.identificador);
+    return mapa;
+  }, [equipos]);
 
   const gruposEquipos = useMemo(() => {
     const mapa = new Map<string, { contratoId: string | null; codigo: string; equipos: Equipo[] }>();
@@ -313,10 +318,14 @@ export default function Equipos() {
                     {g.equipos.map((eq) => (
                       <tr key={eq.id} className="border-t border-neutral-100 hover:bg-neutral-50/60">
                         <td className="px-3 py-1.5">
-                          <p className="font-medium text-neutral-800">{eq.identificador}</p>
-                          {eq.maquina_base && (
-                            <p className="text-xs text-neutral-400">cabezal de {eq.maquina_base.identificador}</p>
-                          )}
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-medium text-neutral-800">{eq.identificador}</span>
+                            {eq.maquina_base_id && (
+                              <span title={`Cabezal de ${identificadorPorId.get(eq.maquina_base_id) ?? "—"}`}>
+                                <Badge tone="neutral">cabezal</Badge>
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="px-3 py-1.5">{eq.tipo ?? "—"}</td>
                         <td className="px-3 py-1.5">
