@@ -34,7 +34,13 @@ type ParadaDetalle = {
     urgencia: string;
     estado: string;
     insumos: { nombre: string; unidad_medida: string; codigo_pieza: string | null } | null;
-    equipos: { id: string; identificador: string; tipo: string | null; horometro_actual: number | null } | null;
+    equipos: {
+      id: string;
+      identificador: string;
+      tipo: string | null;
+      horometro_actual: number | null;
+      contratos: { codigo: string } | null;
+    } | null;
     faenas: { nombre: string } | null;
   } | null;
 };
@@ -129,7 +135,7 @@ export default function RutaDetalle() {
       supabase
         .from("rutas")
         .select(
-          "id, fecha, estado, punto_inicio_lat, punto_inicio_lon, punto_inicio_direccion, hora_salida, distancia_total_km, duracion_total_min, geometria, tramos_directos, camionetas(patente, tipo, capacidad_carga, autonomia_km), paradas(id, orden, hora_estimada, entregas(id, momento_real, cantidad_entregada), pedidos(id, cantidad, urgencia, estado, insumos(nombre, unidad_medida, codigo_pieza), equipos(id, identificador, tipo, horometro_actual), faenas(nombre)))"
+          "id, fecha, estado, punto_inicio_lat, punto_inicio_lon, punto_inicio_direccion, hora_salida, distancia_total_km, duracion_total_min, geometria, tramos_directos, camionetas(patente, tipo, capacidad_carga, autonomia_km), paradas(id, orden, hora_estimada, entregas(id, momento_real, cantidad_entregada), pedidos(id, cantidad, urgencia, estado, insumos(nombre, unidad_medida, codigo_pieza), equipos(id, identificador, tipo, horometro_actual, contratos(codigo)), faenas(nombre)))"
         )
         .eq("id", id)
         .order("orden", { foreignTable: "paradas", ascending: true })
@@ -398,9 +404,12 @@ export default function RutaDetalle() {
               <Card key={parada.id} className="p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <p className="text-sm font-medium text-neutral-900">
+                    <p className="flex flex-wrap items-center gap-1.5 text-sm font-medium text-neutral-900">
                       Parada {parada.orden} ·{" "}
                       {parada.pedidos?.equipos?.identificador ?? parada.pedidos?.faenas?.nombre ?? "—"}
+                      {parada.pedidos?.equipos?.contratos?.codigo && (
+                        <Badge tone="neutral">{parada.pedidos.equipos.contratos.codigo}</Badge>
+                      )}
                     </p>
                     <p className="mt-1 text-sm text-neutral-600">
                       {parada.pedidos?.insumos?.nombre} — {parada.pedidos?.cantidad}{" "}

@@ -44,7 +44,7 @@ type PedidoPendiente = {
   cantidad: number;
   urgencia: string;
   insumos: { nombre: string } | null;
-  equipos: { id: string; identificador: string } | null;
+  equipos: { id: string; identificador: string; contratos: { codigo: string } | null } | null;
 };
 
 type PosicionEquipo = { equipo_id: string; lat: number; lon: number };
@@ -58,7 +58,7 @@ type ParadaRuta = {
   pedidos: {
     cantidad: number;
     insumos: { nombre: string } | null;
-    equipos: { identificador: string } | null;
+    equipos: { identificador: string; contratos: { codigo: string } | null } | null;
   } | null;
 };
 
@@ -127,14 +127,14 @@ export default function Rutas() {
       supabase.from("camionetas").select("id, patente, tipo, capacidad_carga, autonomia_km").eq("estado", "disponible").order("patente"),
       supabase
         .from("pedidos")
-        .select("id, cantidad, urgencia, insumos(nombre), equipos(id, identificador)")
+        .select("id, cantidad, urgencia, insumos(nombre), equipos(id, identificador, contratos(codigo))")
         .eq("estado", "pendiente")
         .not("equipo_id", "is", null),
       supabase.from("equipos_mapa").select("equipo_id, lat, lon"),
       supabase
         .from("rutas")
         .select(
-          "id, fecha, estado, camionetas(patente), paradas(id, orden, entregas(id), pedidos(cantidad, insumos(nombre), equipos(identificador)))"
+          "id, fecha, estado, camionetas(patente), paradas(id, orden, entregas(id), pedidos(cantidad, insumos(nombre), equipos(identificador, contratos(codigo))))"
         )
         .order("fecha", { ascending: false })
         .order("orden", { foreignTable: "paradas", ascending: true })
@@ -436,6 +436,7 @@ export default function Rutas() {
               <tr>
                 <th className="px-3 py-2 font-medium"></th>
                 <th className="px-3 py-2 font-medium">Equipo</th>
+                <th className="px-3 py-2 font-medium">Contrato</th>
                 <th className="px-3 py-2 font-medium">Insumo</th>
                 <th className="px-3 py-2 font-medium">Cantidad</th>
                 <th className="px-3 py-2 font-medium">Urgencia</th>
@@ -445,13 +446,13 @@ export default function Rutas() {
             <tbody>
               {cargando ? (
                 <tr>
-                  <td colSpan={6} className="px-3 py-6">
+                  <td colSpan={7} className="px-3 py-6">
                     <Spinner />
                   </td>
                 </tr>
               ) : pedidos.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-3 py-4 text-center text-neutral-500">
+                  <td colSpan={7} className="px-3 py-4 text-center text-neutral-500">
                     No hay pedidos pendientes vinculados a un equipo. Créalos en Pedidos.
                   </td>
                 </tr>
@@ -469,6 +470,13 @@ export default function Rutas() {
                         />
                       </td>
                       <td className="px-3 py-1.5 font-medium text-neutral-800">{p.equipos?.identificador ?? "—"}</td>
+                      <td className="px-3 py-1.5">
+                        {p.equipos?.contratos?.codigo ? (
+                          <Badge tone="neutral">{p.equipos.contratos.codigo}</Badge>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
                       <td className="px-3 py-1.5">{p.insumos?.nombre ?? "—"}</td>
                       <td className="px-3 py-1.5 tabular-nums">{p.cantidad}</td>
                       <td className="px-3 py-1.5">{p.urgencia}</td>
@@ -533,8 +541,13 @@ export default function Rutas() {
                       .sort((a, b) => a.orden - b.orden)
                       .map((parada) => (
                         <li key={parada.id}>
-                          {parada.pedidos?.equipos?.identificador ?? "—"} · {parada.pedidos?.insumos?.nombre ?? "—"} (
-                          {parada.pedidos?.cantidad ?? "—"})
+                          {parada.pedidos?.equipos?.identificador ?? "—"}
+                          {parada.pedidos?.equipos?.contratos?.codigo && (
+                            <Badge tone="neutral" className="ml-1.5">
+                              {parada.pedidos.equipos.contratos.codigo}
+                            </Badge>
+                          )}{" "}
+                          · {parada.pedidos?.insumos?.nombre ?? "—"} ({parada.pedidos?.cantidad ?? "—"})
                           {parada.entregas.length > 0 && (
                             <span className="ml-2 text-pine-700">✓ entregado</span>
                           )}
